@@ -9,4 +9,8 @@ Sachen für schule
   Konsumenten-/Produzentenrente, Kurvenverschiebungen, Höchst-/Mindestpreise und
   Preiselastizität. Fünf Niveaustufen mit Rechenaufgaben, Lösungskontrolle und
   Lösungsweg; Diagramm reagiert live auf alle Änderungen. Für iPad und iPhone optimiert,
-  Fortschritt wird nur lokal im Browser gespeichert.
+  Fortschritt wird nur lokal im Browser gespeichert. Benötigt beim Öffnen eine
+  Internetverbindung (React und Tailwind werden über CDN geladen).
+- `markt-simulator-offline.html` – inhaltsgleiche Fassung mit eingebetteten Bibliotheken
+  (ca. 250 KB). Läuft ohne Internetverbindung, z. B. nach Verteilung per AirDrop.
+  Wird aus `markt-simulator.html` erzeugt und sollte bei Änderungen neu gebaut werden.
