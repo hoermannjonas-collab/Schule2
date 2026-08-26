@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Marktnachfrage-Simulator – Angebot &amp; Nachfrage</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --paper:#FDF8EE; --card:#FFFFFF; --line:#E6DCC6; --ink:#1F2937;
+    --blue:#1D4ED8; --demand:#2563EB; --supply:#EF4444; --eq:#FACC15;
+  }
+  html,body{background:var(--paper);}
+  *{touch-action:manipulation; -webkit-tap-highlight-color:transparent;}
+  body{color:var(--ink); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+  .pixel{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; letter-spacing:.06em;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:12px;}
+  .cap{font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#6B7280;}
+  /* Slider im Retro-Look, gut mit dem Finger bedienbar */
+  input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:22px; background:transparent;}
+  input[type=range]::-webkit-slider-runnable-track{height:6px; border-radius:99px; background:#E5E7EB;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; appearance:none; width:24px; height:24px; margin-top:-9px;
+    border-radius:99px; background:#3B82F6; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.35); cursor:pointer;}
+  input[type=range]::-moz-range-track{height:6px; border-radius:99px; background:#E5E7EB;}
+  input[type=range]::-moz-range-thumb{width:20px; height:20px; border:3px solid #fff; border-radius:99px; background:#3B82F6;}
+  input[type=range].sup::-webkit-slider-thumb{background:#EF4444;}
+  input[type=range].sup::-moz-range-thumb{background:#EF4444;}
+  input[type=range].neutral::-webkit-slider-thumb{background:#F59E0B;}
+  input[type=range].neutral::-moz-range-thumb{background:#F59E0B;}
+  .num-input{font-variant-numeric:tabular-nums;}
+  .safe-b{padding-bottom:env(safe-area-inset-bottom);}
+  @keyframes pop{0%{transform:scale(.85);opacity:0} 60%{transform:scale(1.06)} 100%{transform:scale(1);opacity:1}}
+  .pop{animation:pop .28s ease-out}
+  @keyframes drawin{from{opacity:0} to{opacity:1}}
+  .drawin{animation:drawin .5s ease-out}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useEffect, useRef } = React;
+
+/* ============================================================
+   1. HILFSFUNKTIONEN
+   ============================================================ */
+const fmt = (n, dec = 0) => (!isFinite(n) ? '–'
+  : n.toLocaleString('de-DE', { minimumFractionDigits: dec, maximumFractionDigits: dec }));
+const eur = (n, dec = 2) => fmt(n, dec) + ' €';
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// Akzeptiert deutsche Eingaben: "1.250", "4,50", "4.5", " 1 250 Stück"
+const parseNum = (s) => {
+  if (typeof s !== 'string') return NaN;
+  let t = s.trim().replace(/\s/g, '').replace(/[^0-9.,\-]/g, '');
+  if (t === '' || t === '-') return NaN;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const v = parseFloat(t);
+  return isNaN(v) ? NaN : v;
+};
+
+/* ============================================================
+   2. MARKTMODELL   Qd = a − b·P     Qs = c + d·P
+   ============================================================ */
+const eqPrice = (m) => (m.a - m.c) / (m.b + m.d);
+const qd = (m, p) => m.a - m.b * p;
+const qs = (m, p) => m.c + m.d * p;
+const prohibitiv = (m) => m.a / m.b;          // Höchstzahlungsbereitschaft (Qd = 0)
+const minAngebot = (m) => Math.max(0, -m.c / m.d); // Mindestangebotspreis (Qs = 0)
+
+function marktKennzahlen(m) {
+  const P = eqPrice(m);
+  const Q = qd(m, P);
+  const pMaxD = prohibitiv(m);
+  const pMinS = minAngebot(m);
+  const KR = 0.5 * Q * (pMaxD - P);
+  // Bei c > 0 beginnt das Angebot bereits bei P = 0 -> Rente ist ein Trapez statt eines Dreiecks
+  const PR = m.c <= 0 ? 0.5 * Q * (P - pMinS) : P * Q - (m.d * P * P) / 2;
+  return { P, Q, pMaxD, pMinS, KR, PR, W: KR + PR };
+}
+
+/* ============================================================
+   3. MÄRKTE / SZENARIEN
+   kb = Preisabstand vom Gleichgewicht bis zum Prohibitivpreis
+   kd = Preisabstand vom Gleichgewicht bis zum Mindestangebotspreis
+   Daraus folgen b = Q/kb und d = Q/kd → immer glatte Zahlen.
+   ============================================================ */
+const SCENARIOS = [
+  { key:'fahrrad', name:'Fahrräder', emoji:'🚲', qUnit:'Stück', komp:'Fahrradhelme', subst:'E-Scooter',
+    prices:[200,250,300,400,500], quantities:[600,800,900,1200], kb:[100,150,200,300], kd:[50,100,150,200], steps:[25,50,100] },
+  { key:'kaffee', name:'Kaffeemaschinen', emoji:'☕', qUnit:'Stück', komp:'Kaffeebohnen', subst:'Kapselmaschinen',
+    prices:[300,400,450,500], quantities:[600,750,900], kb:[150,225,300], kd:[100,150,225], steps:[25,50,75] },
+  { key:'smartphone', name:'Smartphones', emoji:'📱', qUnit:'Stück', komp:'Handyverträge', subst:'Tablets',
+    prices:[400,500,600,800], quantities:[800,1000,1200], kb:[200,250,300,400], kd:[100,200,250,300], steps:[50,100] },
+  { key:'kopfhoerer', name:'Kopfhörer', emoji:'🎧', qUnit:'Stück', komp:'Streaming-Abos', subst:'Bluetooth-Boxen',
+    prices:[40,50,60,80], quantities:[800,1000,1200], kb:[20,25,40,50], kd:[10,20,25,30], steps:[5,10,20] },
+  { key:'pizza', name:'Pizzen', emoji:'🍕', qUnit:'Stück', komp:'Softdrinks', subst:'Döner',
+    prices:[6,8,10,12], quantities:[300,400,600], kb:[3,4,5,6], kd:[2,3,4,5], steps:[1,2] },
+  { key:'kino', name:'Kinotickets', emoji:'🎬', qUnit:'Tickets', komp:'Popcorn', subst:'Streaming-Abos',
+    prices:[8,10,12], quantities:[400,600,800], kb:[4,5,6,8], kd:[2,4,5,6], steps:[1,2] },
+  { key:'scooter', name:'E-Scooter', emoji:'🛴', qUnit:'Stück', komp:'Ersatzakkus', subst:'Fahrräder',
+    prices:[300,400,500], quantities:[600,800,1000], kb:[150,200,250], kd:[100,150,200], steps:[25,50,100] },
+  { key:'sneaker', name:'Sneaker', emoji:'👟', qUnit:'Paar', komp:'Sportsocken', subst:'Laufschuhe',
+    prices:[60,80,100,120], quantities:[600,800,1000], kb:[30,40,50,60], kd:[20,30,40,50], steps:[10,20] },
+  { key:'konzert', name:'Konzertkarten', emoji:'🎫', qUnit:'Karten', komp:'Fan-Shirts', subst:'Festivaltickets',
+    prices:[40,50,60], quantities:[500,800,1000], kb:[20,25,40], kd:[10,20,25], steps:[5,10] },
+  { key:'aepfel', name:'Bio-Äpfel (kg)', emoji:'🍎', qUnit:'kg', komp:'Apfelkuchen-Backmischung', subst:'Birnen',
+    prices:[2,3,4,5], quantities:[400,600,800], kb:[1,2,3,4], kd:[1,2,3], steps:[0.5,1] },
+];
+const scById = (k) => SCENARIOS.find(s => s.key === k) || SCENARIOS[0];
+
+function makeMarket(sc) {
+  const cand = [];
+  for (const P of sc.prices) for (const Q of sc.quantities)
+    for (const kb of sc.kb) for (const kd of sc.kd) {
+      if (kd >= P) continue;                       // Mindestangebotspreis muss > 0 sein
+      const b = Q / kb, d = Q / kd;
+      if (!Number.isInteger(b) || !Number.isInteger(d)) continue;
+      if (b < 1 || d < 1 || d > 12 * b || b > 12 * d) continue;
+      cand.push({ a: Q + b * P, b, c: Q - d * P, d, P, Q, kb, kd, sc });
+    }
+  return cand.length ? pick(cand) : { a: 1200, b: 100, c: -400, d: 100, P: 8, Q: 400, kb: 4, kd: 4, sc };
+}
+
+/* ============================================================
+   4. AUFGABEN-GENERATOREN
+   Jede Aufgabe:
+   { stufe, sc, m, titel, aufgabe:[Absätze], fields:[...], choices:[...],
+     tipp, loesung:[Rechenschritte], chart:{...}, reward }
+   fields:  { key, label, unit, correct, tol, dec }
+   choices: { key, frage, options:[...], correct:index }
+   ============================================================ */
+const STUFEN = [
+  { nr:1, name:'Marktgleichgewicht',   emoji:'⚖️', kurz:'Gleichgewicht',  reward:15 },
+  { nr:2, name:'Renten & Wohlfahrt',   emoji:'🟩', kurz:'Renten',         reward:20 },
+  { nr:3, name:'Marktveränderungen',   emoji:'↔️', kurz:'Verschiebungen', reward:25 },
+  { nr:4, name:'Staatliche Eingriffe', emoji:'🏛️', kurz:'Höchst-/Mindestpreis', reward:25 },
+  { nr:5, name:'Preiselastizität',     emoji:'📐', kurz:'Elastizität',    reward:30 },
+];
+
+const TOL_P = 0.02, TOL_Q = 0.5;
+
+/* --- Stufe 1: Gleichgewichtspreis und -menge ---------------- */
+function taskGleichgewicht() {
+  const sc = pick(SCENARIOS), m = makeMarket(sc);
+  return {
+    stufe:1, sc, m, titel:'Marktgleichgewicht berechnen',
+    aufgabe:[
+      `Auf dem Markt für ${sc.name} gelten folgende Funktionen (P in €, Menge in ${sc.qUnit}):`,
+      'FUNKTIONEN',
+      'Bestimme rechnerisch den Gleichgewichtspreis P* und die Gleichgewichtsmenge Q*.',
+    ],
+    fields:[
+      { key:'p', label:'Gleichgewichtspreis P*', unit:'€', correct:m.P, tol:TOL_P, dec:2 },
+      { key:'q', label:'Gleichgewichtsmenge Q*', unit:sc.qUnit, correct:m.Q, tol:TOL_Q, dec:0 },
+    ],
+    tipp:'Im Gleichgewicht gilt Qd = Qs. Setze die beiden Terme gleich und löse nach P auf. Danach P in eine der Gleichungen einsetzen.',
+    loesung:[
+      'Ansatz: Qd = Qs',
+      `${fmt(m.a)} − ${fmt(m.b)}·P = ${m.c<0?'−'+fmt(-m.c):fmt(m.c)} + ${fmt(m.d)}·P`,
+      `${fmt(m.a)} ${m.c<0?'+':'−'} ${fmt(Math.abs(m.c))} = ${fmt(m.b)}·P + ${fmt(m.d)}·P`,
+      `${fmt(m.a - m.c)} = ${fmt(m.b + m.d)}·P   →   P* = ${fmt(m.a-m.c)} : ${fmt(m.b+m.d)} = ${eur(m.P)}`,
+      `Q* = ${fmt(m.a)} − ${fmt(m.b)} · ${fmt(m.P,2)} = ${fmt(m.Q)} ${sc.qUnit}`,
+      `Probe mit dem Angebot: Qs = ${m.c<0?'−'+fmt(-m.c):fmt(m.c)} + ${fmt(m.d)} · ${fmt(m.P,2)} = ${fmt(m.Q)} ${sc.qUnit} ✓`,
+    ],
+    chart:{ showSurplus:false, showEq:false },
+    reward:15,
+  };
+}
+
+/* --- Stufe 2: Konsumenten-/Produzentenrente ----------------- */
+function taskRenten() {
+  const sc = pick(SCENARIOS), m = makeMarket(sc);
+  const k = marktKennzahlen(m);
+  return {
+    stufe:2, sc, m, titel:'Konsumenten- und Produzentenrente',
+    aufgabe:[
+      'Gegeben sind die Funktionen (P in €):',
+      'FUNKTIONEN',
+      `Das Marktgleichgewicht liegt bei P* = ${eur(m.P)} und Q* = ${fmt(m.Q)} ${sc.qUnit}.`,
+      'Berechne den Prohibitivpreis, die Konsumentenrente (KR), die Produzentenrente (PR) und die Gesamtwohlfahrt.',
+    ],
+    fields:[
+      { key:'ph', label:'Prohibitivpreis (Qd = 0)', unit:'€', correct:k.pMaxD, tol:TOL_P, dec:2 },
+      { key:'kr', label:'Konsumentenrente KR', unit:'€', correct:k.KR, tol:Math.max(1, k.KR*0.005), dec:2 },
+      { key:'pr', label:'Produzentenrente PR', unit:'€', correct:k.PR, tol:Math.max(1, k.PR*0.005), dec:2 },
+      { key:'w',  label:'Gesamtwohlfahrt', unit:'€', correct:k.W, tol:Math.max(1, k.W*0.005), dec:2 },
+    ],
+    tipp:'Beide Renten sind Dreiecke: A = ½ · Grundseite · Höhe. Grundseite ist jeweils Q*, die Höhe ist der Preisabstand zum Prohibitivpreis bzw. zum Mindestangebotspreis.',
+    loesung:[
+      `Prohibitivpreis: Qd = 0  →  0 = ${fmt(m.a)} − ${fmt(m.b)}·P  →  P = ${fmt(m.a)} : ${fmt(m.b)} = ${eur(k.pMaxD)}`,
+      `Mindestangebotspreis: Qs = 0  →  0 = ${m.c<0?'−'+fmt(-m.c):fmt(m.c)} + ${fmt(m.d)}·P  →  P = ${eur(k.pMinS)}`,
+      `KR = ½ · Q* · (Prohibitivpreis − P*) = ½ · ${fmt(m.Q)} · (${fmt(k.pMaxD,2)} − ${fmt(m.P,2)}) = ${eur(k.KR)}`,
+      `PR = ½ · Q* · (P* − Mindestangebotspreis) = ½ · ${fmt(m.Q)} · (${fmt(m.P,2)} − ${fmt(k.pMinS,2)}) = ${eur(k.PR)}`,
+      `Gesamtwohlfahrt = KR + PR = ${eur(k.KR)} + ${eur(k.PR)} = ${eur(k.W)}`,
+    ],
+    chart:{ showSurplus:true, showEq:true },
+    reward:20,
+  };
+}
+
+/* --- Stufe 3: Verschiebung von Angebot / Nachfrage ---------- */
+const SHIFT_EVENTS = [
+  { t:sc=>`Die Konjunktur läuft gut: Das verfügbare Einkommen der Haushalte steigt spürbar. ${sc.name} sind ein normales Gut.`,
+    curve:'N', dir:'rechts', why:'Bei einem normalen Gut steigt die Nachfrage, wenn das Einkommen steigt – die Nachfragekurve wandert nach rechts.' },
+  { t:sc=>`Eine Rezession lässt die verfügbaren Einkommen der Haushalte deutlich sinken. ${sc.name} sind ein normales Gut.`,
+    curve:'N', dir:'links', why:'Sinkendes Einkommen senkt bei einem normalen Gut die Nachfrage bei jedem Preis – die Nachfragekurve wandert nach links.' },
+  { t:sc=>`Der Preis für ${sc.komp} steigt kräftig. Es handelt sich um ein Komplementärgut.`,
+    curve:'N', dir:'links', why:'Komplementärgüter werden gemeinsam genutzt. Wird das Ergänzungsgut teurer, sinkt die Nachfrage nach dem Hauptgut.' },
+  { t:sc=>`Der Preis für ${sc.komp} (Komplementärgut) fällt deutlich.`,
+    curve:'N', dir:'rechts', why:'Wird das Ergänzungsgut billiger, wird das Gesamtpaket günstiger – die Nachfrage nach dem Hauptgut steigt.' },
+  { t:sc=>`Der Preis für ${sc.subst} steigt stark an. Es handelt sich um ein Substitutionsgut.`,
+    curve:'N', dir:'rechts', why:'Wird das Ersatzgut teurer, weichen die Konsumenten auf dieses Gut aus – die Nachfrage steigt.' },
+  { t:sc=>`Der Preis für ${sc.subst} (Substitutionsgut) fällt spürbar.`,
+    curve:'N', dir:'links', why:'Ein billigeres Ersatzgut zieht Nachfrage ab – die Nachfragekurve wandert nach links.' },
+  { t:sc=>`Ein viraler Social-Media-Trend macht ${sc.name} bei jungen Leuten plötzlich sehr beliebt.`,
+    curve:'N', dir:'rechts', why:'Geänderte Präferenzen erhöhen die Zahlungsbereitschaft bei jedem Preis – Nachfrage nach rechts.' },
+  { t:sc=>`Die Konsumenten erwarten, dass ${sc.name} im nächsten Jahr deutlich teurer werden.`,
+    curve:'N', dir:'rechts', why:'Erwartete Preissteigerungen ziehen Käufe in die Gegenwart vor – die heutige Nachfrage steigt.' },
+  { t:sc=>`Ein Test zeigt Qualitätsmängel: ${sc.name} gelten plötzlich als unzuverlässig.`,
+    curve:'N', dir:'links', why:'Verschlechterte Präferenzen senken die Nachfrage bei jedem Preis – Nachfrage nach links.' },
+  { t:()=>`Die Rohstoff- und Energiepreise in der Produktion steigen kräftig.`,
+    curve:'A', dir:'links', why:'Höhere Produktionskosten senken die angebotene Menge bei jedem Preis – die Angebotskurve wandert nach links (oben).' },
+  { t:()=>`Eine neue, automatisierte Fertigung senkt die Stückkosten der Hersteller erheblich.`,
+    curve:'A', dir:'rechts', why:'Sinkende Produktionskosten erhöhen die angebotene Menge bei jedem Preis – Angebot nach rechts.' },
+  { t:sc=>`Mehrere neue Anbieter aus dem Ausland treten in den Markt für ${sc.name} ein.`,
+    curve:'A', dir:'rechts', why:'Mehr Anbieter erhöhen die Gesamtmenge, die bei jedem Preis angeboten wird – Angebot nach rechts.' },
+  { t:sc=>`Der Staat erhebt eine neue Stücksteuer auf ${sc.name}.`,
+    curve:'A', dir:'links', why:'Eine Stücksteuer wirkt wie eine Kostenerhöhung – die Angebotskurve verschiebt sich nach links (oben).' },
+  { t:()=>`Der Staat zahlt den Herstellern eine Subvention je verkaufter Einheit.`,
+    curve:'A', dir:'rechts', why:'Eine Subvention senkt die effektiven Kosten – die Angebotskurve verschiebt sich nach rechts (unten).' },
+  { t:()=>`Eine lange Dürre vernichtet einen großen Teil der Produktion.`,
+    curve:'A', dir:'links', why:'Ein Produktionsausfall verringert die angebotene Menge bei jedem Preis – Angebot nach links.' },
+];
+
+const SHIFT_OPTIONS = [
+  'Die Nachfragekurve verschiebt sich nach rechts (Nachfrage steigt).',
+  'Die Nachfragekurve verschiebt sich nach links (Nachfrage sinkt).',
+  'Die Angebotskurve verschiebt sich nach rechts (Angebot steigt).',
+  'Die Angebotskurve verschiebt sich nach links (Angebot sinkt).',
+];
+
+function taskVerschiebung() {
+  const sc = pick(SCENARIOS), m = makeMarket(sc);
+  const ev = pick(SHIFT_EVENTS);
+  const grenze = Math.min(m.kb, m.kd, m.P);
+  const moeglich = sc.steps.filter(s => s > 0 && s < grenze);
+  const k = moeglich.length ? pick(moeglich) : grenze / 2;
+  const delta = k * (m.b + m.d);
+
+  let m2, neuP, neuQ, optIdx, funcText;
+  if (ev.curve === 'N') {
+    const vz = ev.dir === 'rechts' ? 1 : -1;
+    m2 = { ...m, a: m.a + vz * delta };
+    neuP = m.P + vz * k; neuQ = m.Q + vz * k * m.d;
+    optIdx = ev.dir === 'rechts' ? 0 : 1;
+    funcText = `Bei jedem Preis wird die nachgefragte Menge um ${fmt(delta)} ${sc.qUnit} ${ev.dir==='rechts'?'größer':'kleiner'}. Die neue Nachfragefunktion lautet:  Qd′ = ${fmt(m2.a)} − ${fmt(m.b)}·P`;
+  } else {
+    const vz = ev.dir === 'rechts' ? 1 : -1;
+    m2 = { ...m, c: m.c + vz * delta };
+    neuP = m.P - vz * k; neuQ = m.Q + vz * k * m.b;
+    optIdx = ev.dir === 'rechts' ? 2 : 3;
+    funcText = `Bei jedem Preis wird die angebotene Menge um ${fmt(delta)} ${sc.qUnit} ${ev.dir==='rechts'?'größer':'kleiner'}. Die neue Angebotsfunktion lautet:  Qs′ = ${m2.c<0?'−'+fmt(-m2.c):fmt(m2.c)} + ${fmt(m.d)}·P`;
+  }
+  const nA = ev.curve === 'N' ? m2.a : m.a, nC = ev.curve === 'N' ? m.c : m2.c;
+
+  return {
+    stufe:3, sc, m, m2, titel:'Marktveränderung analysieren',
+    aufgabe:[
+      'Ausgangslage – gegeben sind die Funktionen:',
+      'FUNKTIONEN',
+      `Gleichgewicht: P* = ${eur(m.P)}, Q* = ${fmt(m.Q)} ${sc.qUnit}.`,
+      `Ereignis: ${ev.t(sc)}`,
+      funcText,
+      'Beurteile zuerst, welche Kurve sich in welche Richtung verschiebt, und berechne dann das neue Marktgleichgewicht.',
+    ],
+    choices:[{ key:'shift', frage:'Was passiert im Diagramm (ceteris paribus)?', options:SHIFT_OPTIONS, correct:optIdx }],
+    fields:[
+      { key:'p', label:'Neuer Gleichgewichtspreis P*′', unit:'€', correct:neuP, tol:TOL_P, dec:2 },
+      { key:'q', label:'Neue Gleichgewichtsmenge Q*′', unit:sc.qUnit, correct:neuQ, tol:TOL_Q, dec:0 },
+    ],
+    tipp:'Nur eine Kurve verschiebt sich – die andere Funktion bleibt unverändert. Setze die neue Funktion mit der unveränderten gleich (Qd′ = Qs bzw. Qd = Qs′).',
+    loesung:[
+      ev.why,
+      `Neuer Ansatz: ${fmt(nA)} − ${fmt(m.b)}·P = ${nC<0?'−'+fmt(-nC):fmt(nC)} + ${fmt(m.d)}·P`,
+      `${fmt(nA - nC)} = ${fmt(m.b + m.d)}·P   →   P*′ = ${eur(neuP)}`,
+      `Q*′ = ${fmt(nA)} − ${fmt(m.b)} · ${fmt(neuP,2)} = ${fmt(neuQ)} ${sc.qUnit}`,
+      `Veränderung: Preis ${neuP>m.P?'steigt':'sinkt'} um ${eur(Math.abs(neuP-m.P))}, Menge ${neuQ>m.Q?'steigt':'sinkt'} um ${fmt(Math.abs(neuQ-m.Q))} ${sc.qUnit}.`,
+    ],
+    chart:{ showSurplus:false, showEq:true, revealCompare:true },
+    reward:25,
+  };
+}
+
+/* --- Stufe 4: Höchst- und Mindestpreise --------------------- */
+function taskEingriff() {
+  const sc = pick(SCENARIOS), m = makeMarket(sc);
+  const typ = Math.random() < 0.5 ? 'hoechst' : 'mindest';
+  const grenze = typ === 'hoechst' ? m.kd : m.kb;
+  const moeglich = sc.steps.filter(s => s > 0 && s < grenze);
+  const k = moeglich.length ? pick(moeglich) : grenze / 2;
+  const Pfix = typ === 'hoechst' ? m.P - k : m.P + k;
+  const nachfrage = qd(m, Pfix), angebot = qs(m, Pfix);
+  const ueber = Math.abs(nachfrage - angebot);
+  const istHoechst = typ === 'hoechst';
+
+  return {
+    stufe:4, sc, m, titel: istHoechst ? 'Höchstpreis analysieren' : 'Mindestpreis analysieren',
+    aufgabe:[
+      'Gegeben sind die Funktionen:',
+      'FUNKTIONEN',
+      `Das freie Marktgleichgewicht liegt bei P* = ${eur(m.P)} und Q* = ${fmt(m.Q)} ${sc.qUnit}.`,
+      istHoechst
+        ? `Der Staat legt zum Schutz der Verbraucher einen Höchstpreis von ${eur(Pfix)} fest.`
+        : `Der Staat legt zum Schutz der Anbieter einen Mindestpreis von ${eur(Pfix)} fest.`,
+      `Berechne die nachgefragte und die angebotene Menge zu diesem Preis sowie den entstehenden Überschuss.`,
+    ],
+    choices:[{ key:'zustand', frage:'Welcher Marktzustand entsteht?', options:[
+      'Nachfrageüberschuss (Angebotslücke / Mangel)',
+      'Angebotsüberschuss (Überproduktion)',
+      'Der Markt bleibt im Gleichgewicht.',
+    ], correct: istHoechst ? 0 : 1 }],
+    fields:[
+      { key:'qn', label:`Nachfragemenge bei ${eur(Pfix)}`, unit:sc.qUnit, correct:nachfrage, tol:TOL_Q, dec:0 },
+      { key:'qa', label:`Angebotsmenge bei ${eur(Pfix)}`, unit:sc.qUnit, correct:angebot, tol:TOL_Q, dec:0 },
+      { key:'ue', label: istHoechst ? 'Nachfrageüberschuss' : 'Angebotsüberschuss', unit:sc.qUnit, correct:ueber, tol:TOL_Q, dec:0 },
+    ],
+    tipp: istHoechst
+      ? 'Ein wirksamer Höchstpreis liegt UNTER dem Gleichgewichtspreis. Setze den Preis in beide Funktionen ein – die Nachfrage ist dann größer als das Angebot.'
+      : 'Ein wirksamer Mindestpreis liegt ÜBER dem Gleichgewichtspreis. Setze den Preis in beide Funktionen ein – das Angebot ist dann größer als die Nachfrage.',
+    loesung:[
+      `Qd(${fmt(Pfix,2)}) = ${fmt(m.a)} − ${fmt(m.b)} · ${fmt(Pfix,2)} = ${fmt(nachfrage)} ${sc.qUnit}`,
+      `Qs(${fmt(Pfix,2)}) = ${m.c<0?'−'+fmt(-m.c):fmt(m.c)} + ${fmt(m.d)} · ${fmt(Pfix,2)} = ${fmt(angebot)} ${sc.qUnit}`,
+      istHoechst
+        ? `Nachfrageüberschuss = Qd − Qs = ${fmt(nachfrage)} − ${fmt(angebot)} = ${fmt(ueber)} ${sc.qUnit}`
+        : `Angebotsüberschuss = Qs − Qd = ${fmt(angebot)} − ${fmt(nachfrage)} = ${fmt(ueber)} ${sc.qUnit}`,
+      istHoechst
+        ? `Gehandelt wird nur die kleinere Menge (${fmt(angebot)} ${sc.qUnit}). Es entsteht ein Mangel; typische Folgen sind Wartelisten, Rationierung oder Schwarzmärkte.`
+        : `Gehandelt wird nur die kleinere Menge (${fmt(nachfrage)} ${sc.qUnit}). Es entsteht ein Überschuss, der z. B. eingelagert oder vom Staat aufgekauft werden muss.`,
+    ],
+    chart:{ showSurplus:false, showEq:true, priceLine:Pfix, gapLabel:true },
+    reward:25,
+  };
+}
+
+/* --- Stufe 5: Preiselastizität der Nachfrage ---------------- */
+function taskElastizitaet() {
+  const sc = pick(SCENARIOS), m = makeMarket(sc);
+  // Nur Preispaare zulassen, bei denen beide Mengen deutlich positiv bleiben
+  const kombis = [];
+  for (const p1 of [m.P, m.P - Math.min(...sc.steps), m.P + Math.min(...sc.steps)])
+    for (const k of sc.steps)
+      if (p1 > 0 && qd(m, p1) > 0.25 * m.Q && qd(m, p1 + k) > 0.2 * m.Q)
+        kombis.push([p1, k]);
+  const [P1, k] = kombis.length ? pick(kombis) : [m.P, m.kb / 4];
+  const P2 = P1 + k;
+  const Q1 = qd(m, P1), Q2 = qd(m, P2);
+  const eps = ((Q2 - Q1) / Q1) / ((P2 - P1) / P1);
+  const abs = Math.abs(eps);
+  const interp = abs > 1.0001 ? 0 : abs < 0.9999 ? 1 : 2;
+  const U1 = P1 * Q1, U2 = P2 * Q2;
+  const umsatz = U2 > U1 + 0.01 ? 0 : U2 < U1 - 0.01 ? 1 : 2;
+
+  return {
+    stufe:5, sc, m, titel:'Preiselastizität der Nachfrage',
+    aufgabe:[
+      'Gegeben sind die Funktionen:',
+      'FUNKTIONEN',
+      `Der Preis steigt von P₁ = ${eur(P1)} auf P₂ = ${eur(P2)}.`,
+      'Berechne die zugehörigen Nachfragemengen und die Preiselastizität der Nachfrage (Ausgangswert-Methode, auf 2 Dezimalstellen).',
+    ],
+    choices:[
+      { key:'interp', frage:'Wie ist die Nachfrage in diesem Preisbereich zu beurteilen?', options:[
+        'elastisch  (|ε| > 1) – die Menge reagiert überproportional',
+        'unelastisch  (|ε| < 1) – die Menge reagiert unterproportional',
+        'isoelastisch / einheitselastisch  (|ε| = 1)',
+      ], correct:interp },
+      { key:'umsatz', frage:'Wie verändert sich der Umsatz der Anbieter (P · Q)?', options:[
+        'Der Umsatz steigt.', 'Der Umsatz sinkt.', 'Der Umsatz bleibt unverändert.',
+      ], correct:umsatz },
+    ],
+    fields:[
+      { key:'q1', label:'Nachfragemenge Q₁', unit:sc.qUnit, correct:Q1, tol:TOL_Q, dec:0 },
+      { key:'q2', label:'Nachfragemenge Q₂', unit:sc.qUnit, correct:Q2, tol:TOL_Q, dec:0 },
+      { key:'e',  label:'Preiselastizität ε (mit Vorzeichen)', unit:'', correct:eps, tol:0.03, dec:2 },
+    ],
+    tipp:'ε = (relative Mengenänderung) : (relative Preisänderung) = (ΔQ : Q₁) : (ΔP : P₁). Das Ergebnis ist bei normaler Nachfrage negativ. Für die Beurteilung zählt der Betrag |ε|.',
+    loesung:[
+      `Q₁ = ${fmt(m.a)} − ${fmt(m.b)} · ${fmt(P1,2)} = ${fmt(Q1)} ${sc.qUnit}`,
+      `Q₂ = ${fmt(m.a)} − ${fmt(m.b)} · ${fmt(P2,2)} = ${fmt(Q2)} ${sc.qUnit}`,
+      `ΔQ = ${fmt(Q2-Q1)} ${sc.qUnit};  ΔP = ${eur(P2-P1)}`,
+      `relative Mengenänderung = ${fmt(Q2-Q1)} : ${fmt(Q1)} = ${fmt((Q2-Q1)/Q1, 4)}`,
+      `relative Preisänderung  = ${fmt(P2-P1,2)} : ${fmt(P1,2)} = ${fmt((P2-P1)/P1, 4)}`,
+      `ε = ${fmt((Q2-Q1)/Q1,4)} : ${fmt((P2-P1)/P1,4)} = ${fmt(eps,2)}`,
+      `|ε| = ${fmt(abs,2)} → Nachfrage ist ${['elastisch','unelastisch','isoelastisch'][interp]}.`,
+      `Umsatz vorher: ${eur(U1)} · Umsatz nachher: ${eur(U2)} → Der Umsatz ${['steigt','sinkt','bleibt gleich'][umsatz]}.`,
+    ],
+    chart:{ showSurplus:false, showEq:false, points:[
+      { p:P1, q:Q1, label:'P₁', color:'#7C3AED' },
+      { p:P2, q:Q2, label:'P₂', color:'#DB2777' },
+    ] },
+    reward:30,
+  };
+}
+
+const GENERATOREN = { 1:taskGleichgewicht, 2:taskRenten, 3:taskVerschiebung, 4:taskEingriff, 5:taskElastizitaet };
+function makeTask(stufe) {
+  const s = stufe === 0 ? pick([1,2,3,4,5]) : stufe;
+  return GENERATOREN[s]();
+}
+function makeRunde(stufe, anzahl = 5) {
+  return Array.from({ length: anzahl }, () => makeTask(stufe));
+}
+
+/* ============================================================
+   5. DIAGRAMM (SVG, reagiert auf jede Änderung)
+   ============================================================ */
+function niceScale(max, teile = 5) {
+  if (!isFinite(max) || max <= 0) return { step: 1, max: 5 };
+  const raw = max / teile;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  const step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+  return { step, max: Math.ceil(max / step) * step };
+}
+
+function useKompakt() {
+  const [k, setK] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1280);
+  useEffect(() => {
+    const h = () => setK(window.innerWidth < 1280);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return k;
+}
+
+function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points, gapLabel, sc, titel, kompakt }) {
+  const W = kompakt ? 440 : 640, H = kompakt ? 350 : 430;
+  const pad = kompakt ? { l: 54, r: 28, t: 26, b: 48 } : { l: 68, r: 34, t: 30, b: 58 };
+  const FS = kompakt ? 14 : 12, FSL = kompakt ? 15 : 13;
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const ms = [m, compare].filter(Boolean);
+
+  const teile = kompakt ? 4 : 5;
+  const pS = niceScale(Math.max(...ms.map(x => prohibitiv(x))) * 1.06, teile);
+  const qS = niceScale(Math.max(...ms.map(x => x.a)) * 1.06, teile);
+  const pMax = pS.max, qMax = qS.max;
+  const X = (q) => pad.l + clamp(q / qMax, 0, 1.2) * iw;
+  const Y = (p) => pad.t + ih - clamp(p / pMax, 0, 1.2) * ih;
+
+  const k = marktKennzahlen(m);
+  const pDec = pMax <= 20 ? 0 : 0;
+
+  const curves = (mk, solid) => {
+    const dTop = prohibitiv(mk), dStart = { q: 0, p: dTop }, dEnd = { q: mk.a, p: 0 };
+    const sLowP = minAngebot(mk), sLowQ = Math.max(0, mk.c);
+    const pEnd = Math.min(pMax, (qMax - mk.c) / mk.d);
+    const sEnd = { q: mk.c + mk.d * pEnd, p: pEnd };
+    return { dStart, dEnd, sStart: { q: sLowQ, p: sLowP }, sEnd, solid };
+  };
+  const main = curves(m, true);
+  const old = compare ? curves(compare, false) : null;
+
+  const dotsOn = (A, B, n = 7) => Array.from({ length: n }, (_, i) => {
+    const t = i / (n - 1);
+    return { x: X(A.q + (B.q - A.q) * t), y: Y(A.p + (B.p - A.p) * t) };
+  });
+
+  const pTicks = [], qTicks = [];
+  for (let v = 0; v <= pMax + 1e-9; v += pS.step) pTicks.push(v);
+  for (let v = 0; v <= qMax + 1e-9; v += qS.step) qTicks.push(v);
+
+  const plQd = priceLine != null ? qd(m, priceLine) : null;
+  const plQs = priceLine != null ? qs(m, priceLine) : null;
+
+  return (
+    <div className="w-full">
+      {titel && <div className="text-center pixel text-[13px] sm:text-sm font-bold text-slate-700 mb-1">{titel}</div>}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" role="img" aria-label="Angebots- und Nachfragediagramm">
+        {/* Gitternetz */}
+        {pTicks.map((v, i) => <line key={'gp'+i} x1={pad.l} x2={pad.l+iw} y1={Y(v)} y2={Y(v)} stroke="#F1EDE1" strokeWidth="1" />)}
+        {qTicks.map((v, i) => <line key={'gq'+i} x1={X(v)} x2={X(v)} y1={pad.t} y2={pad.t+ih} stroke="#F1EDE1" strokeWidth="1" />)}
+
+        {/* Renten-Flächen */}
+        {showSurplus && (
+          <g className="drawin">
+            <polygon points={`${X(0)},${Y(k.P)} ${X(0)},${Y(k.pMaxD)} ${X(k.Q)},${Y(k.P)}`} fill="#86EFAC" fillOpacity="0.55" />
+            {m.c <= 0
+              ? <polygon points={`${X(0)},${Y(k.P)} ${X(0)},${Y(k.pMinS)} ${X(k.Q)},${Y(k.P)}`} fill="#FCA5A5" fillOpacity="0.55" />
+              : <polygon points={`${X(0)},${Y(k.P)} ${X(0)},${Y(0)} ${X(m.c)},${Y(0)} ${X(k.Q)},${Y(k.P)}`} fill="#FCA5A5" fillOpacity="0.55" />}
+          </g>
+        )}
+
+        {/* Ausgangskurven (gestrichelt) bei Verschiebungen */}
+        {old && (
+          <g className="drawin">
+            <line x1={X(old.dStart.q)} y1={Y(old.dStart.p)} x2={X(old.dEnd.q)} y2={Y(old.dEnd.p)}
+                  stroke="#93C5FD" strokeWidth="2.5" strokeDasharray="7 5" />
+            <line x1={X(old.sStart.q)} y1={Y(old.sStart.p)} x2={X(old.sEnd.q)} y2={Y(old.sEnd.p)}
+                  stroke="#FCA5A5" strokeWidth="2.5" strokeDasharray="7 5" />
+            {(() => { const ko = marktKennzahlen(compare); return (
+              <circle cx={X(ko.Q)} cy={Y(ko.P)} r="6" fill="#fff" stroke="#9CA3AF" strokeWidth="2.5" />
+            ); })()}
+          </g>
+        )}
+
+        {/* Höchst-/Mindestpreis-Linie */}
+        {priceLine != null && (
+          <g>
+            <line x1={pad.l} x2={pad.l+iw} y1={Y(priceLine)} y2={Y(priceLine)} stroke="#7C3AED" strokeWidth="2.5" strokeDasharray="8 4" />
+            <text x={pad.l+4} y={Y(priceLine)-7} fontSize={FSL} fontWeight="700" fill="#7C3AED">P = {fmt(priceLine,2)} €</text>
+            <line x1={X(Math.min(plQd,plQs))} x2={X(Math.max(plQd,plQs))} y1={Y(priceLine)} y2={Y(priceLine)}
+                  stroke="#7C3AED" strokeWidth="7" strokeOpacity="0.28" strokeLinecap="round" />
+            <circle cx={X(plQd)} cy={Y(priceLine)} r="5.5" fill="#2563EB" stroke="#fff" strokeWidth="2" />
+            <circle cx={X(plQs)} cy={Y(priceLine)} r="5.5" fill="#EF4444" stroke="#fff" strokeWidth="2" />
+            {gapLabel && Math.abs(plQd - plQs) > 0.001 && (
+              <text x={X((plQd+plQs)/2)} y={Y(priceLine)+20} fontSize={FSL} fontWeight="700" textAnchor="middle" fill="#6D28D9">
+                {plQd > plQs ? 'Mangel' : 'Überschuss'}: {fmt(Math.abs(plQd-plQs))}
+              </text>
+            )}
+          </g>
+        )}
+
+        {/* Angebot & Nachfrage */}
+        <line x1={X(main.dStart.q)} y1={Y(main.dStart.p)} x2={X(main.dEnd.q)} y2={Y(main.dEnd.p)} stroke="#2563EB" strokeWidth="3.5" strokeLinecap="round" />
+        <line x1={X(main.sStart.q)} y1={Y(main.sStart.p)} x2={X(main.sEnd.q)} y2={Y(main.sEnd.p)} stroke="#EF4444" strokeWidth="3.5" strokeLinecap="round" />
+        {dotsOn(main.dStart, main.dEnd).map((p, i) => <circle key={'dd'+i} cx={p.x} cy={p.y} r="3.6" fill="#2563EB" />)}
+        {dotsOn(main.sStart, main.sEnd).map((p, i) => <circle key={'sd'+i} cx={p.x} cy={p.y} r="3.6" fill="#EF4444" />)}
+
+        {/* Gleichgewicht */}
+        {showEq && k.P > 0 && k.Q > 0 && (
+          <g className="pop">
+            <line x1={X(k.Q)} y1={Y(k.P)} x2={X(k.Q)} y2={Y(0)} stroke="#64748B" strokeWidth="1.6" strokeDasharray="5 4" />
+            <line x1={X(k.Q)} y1={Y(k.P)} x2={X(0)} y2={Y(k.P)} stroke="#64748B" strokeWidth="1.6" strokeDasharray="5 4" />
+            <circle cx={X(k.Q)} cy={Y(k.P)} r="8" fill="#FACC15" stroke="#78350F" strokeWidth="2" />
+          </g>
+        )}
+
+        {/* zusätzliche Punkte (z. B. Elastizität) */}
+        {(points || []).map((pt, i) => (
+          <g key={'pt'+i}>
+            <line x1={X(pt.q)} y1={Y(pt.p)} x2={X(pt.q)} y2={Y(0)} stroke={pt.color} strokeWidth="1.4" strokeDasharray="4 4" />
+            <line x1={X(pt.q)} y1={Y(pt.p)} x2={X(0)} y2={Y(pt.p)} stroke={pt.color} strokeWidth="1.4" strokeDasharray="4 4" />
+            <circle cx={X(pt.q)} cy={Y(pt.p)} r="7" fill={pt.color} stroke="#fff" strokeWidth="2" />
+            <text x={X(pt.q)+11} y={Y(pt.p)-9} fontSize={FSL} fontWeight="800" fill={pt.color}>{pt.label}</text>
+          </g>
+        ))}
+
+        {/* Achsen */}
+        <line x1={pad.l} y1={pad.t-6} x2={pad.l} y2={pad.t+ih} stroke="#334155" strokeWidth="2" />
+        <line x1={pad.l} y1={pad.t+ih} x2={pad.l+iw+8} y2={pad.t+ih} stroke="#334155" strokeWidth="2" />
+        {pTicks.map((v, i) => (
+          <text key={'tp'+i} x={pad.l-9} y={Y(v)+4} fontSize={FS} textAnchor="end" fill="#475569">{fmt(v, pDec)}</text>
+        ))}
+        {qTicks.map((v, i) => (
+          <text key={'tq'+i} x={X(v)} y={pad.t+ih+19} fontSize={FS} textAnchor="middle" fill="#475569">{fmt(v)}</text>
+        ))}
+        <text x={pad.l-(kompakt?46:52)} y={pad.t-12} fontSize={FSL} fontWeight="700" fill="#334155">Preis (€)</text>
+        <text x={pad.l+iw+8} y={pad.t+ih+(kompakt?36:40)} fontSize={FSL} fontWeight="700" textAnchor="end" fill="#334155">
+          Menge ({sc ? sc.qUnit : 'Stück'})
+        </text>
+      </svg>
+
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-1 text-[11px] sm:text-xs text-slate-600">
+        <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-red-500"></span>Angebot</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-blue-600"></span>Nachfrage</span>
+        {showEq && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-yellow-400 border border-amber-800"></span>Gleichgewicht</span>}
+        {showSurplus && <>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-green-300"></span>Konsumentenrente</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-red-300"></span>Produzentenrente</span>
+        </>}
+        {compare && <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-slate-400"></span>vorher</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   6. FORTSCHRITT (nur lokal im Browser – localStorage)
+   ============================================================ */
+const STORE_KEY = 'marktsim_v1';
+const leerStats = () => ({ 1:{t:0,ok:0}, 2:{t:0,ok:0}, 3:{t:0,ok:0}, 4:{t:0,ok:0}, 5:{t:0,ok:0} });
+const DEFAULT_PROGRESS = { name:'', coins:0, xp:0, totalT:0, totalOk:0, streak:0, bestStreak:0, stats:leerStats() };
+
+function loadProgress() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (raw && raw.stats) return { ...DEFAULT_PROGRESS, ...raw, stats: { ...leerStats(), ...raw.stats } };
+  } catch (e) { /* Speicher nicht verfügbar (z. B. Privatmodus) – dann ohne Speichern weiterspielen */ }
+  return { ...DEFAULT_PROGRESS, stats: leerStats() };
+}
+function saveProgress(p) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(p)); } catch (e) {}
+}
+const LEVEL_XP = 120;
+const LEVEL_TITEL = ['Marktneuling','Marktbeobachter:in','Analyst:in','Marktprofi','VWL-Expert:in','Marktmeister:in'];
+const levelOf = (xp) => Math.min(12, 1 + Math.floor(xp / LEVEL_XP));
+const titelOf = (lvl) => LEVEL_TITEL[Math.min(LEVEL_TITEL.length - 1, Math.floor((lvl - 1) / 2))];
+
+const BADGES = [
+  { id:'first',   emoji:'🎯', name:'Erster Treffer',        cond:p => p.totalOk >= 1 },
+  { id:'eq5',     emoji:'⚖️', name:'Gleichgewichts-Profi',  cond:p => p.stats[1].ok >= 5 },
+  { id:'rent5',   emoji:'🟩', name:'Renten-Rechner:in',     cond:p => p.stats[2].ok >= 5 },
+  { id:'shift5',  emoji:'↔️', name:'Kurven-Versteher:in',   cond:p => p.stats[3].ok >= 5 },
+  { id:'staat5',  emoji:'🏛️', name:'Marktwächter:in',       cond:p => p.stats[4].ok >= 5 },
+  { id:'elast5',  emoji:'📐', name:'Elastizitäts-Ass',      cond:p => p.stats[5].ok >= 5 },
+  { id:'streak5', emoji:'🔥', name:'5er-Serie',             cond:p => p.bestStreak >= 5 },
+  { id:'coins',   emoji:'🪙', name:'Münzsammler:in (500)',  cond:p => p.coins >= 500 },
+  { id:'all3',    emoji:'🏅', name:'Allrounder:in',         cond:p => [1,2,3,4,5].every(s => p.stats[s].ok >= 3) },
+];
+
+/* ============================================================
+   7. KLEINE BAUSTEINE
+   ============================================================ */
+const Card = ({ title, right, children, className = '' }) => (
+  <div className={`card ${className}`}>
+    {(title || right) && (
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#EFE7D5]">
+        <span className="cap">{title}</span>{right}
+      </div>
+    )}
+    <div className="p-3">{children}</div>
+  </div>
+);
+
+const Fn = ({ m, kind }) => kind === 'd'
+  ? <span className="whitespace-nowrap">Q<sub>d</sub> = {fmt(m.a)} − {fmt(m.b)} · P</span>
+  : <span className="whitespace-nowrap">Q<sub>s</sub> = {m.c < 0 ? '−' + fmt(-m.c) : fmt(m.c)} + {fmt(m.d)} · P</span>;
+
+const FunktionsBox = ({ m }) => (
+  <div className="my-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 font-mono text-[13px] sm:text-sm leading-7">
+    <div className="text-blue-700 font-semibold"><Fn m={m} kind="d" /></div>
+    <div className="text-red-600 font-semibold"><Fn m={m} kind="s" /></div>
+  </div>
+);
+
+const Maskottchen = ({ text, figur = '🧑‍🏫' }) => (
+  <div className="flex items-start gap-2">
+    <div className="text-3xl leading-none shrink-0 select-none">{figur}</div>
+    <div className="relative flex-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12.5px] leading-snug text-amber-900">
+      <div className="absolute -left-1.5 top-3 w-3 h-3 rotate-45 bg-amber-50 border-l border-b border-amber-300"></div>
+      {text}
+    </div>
+  </div>
+);
+
+const Wert = ({ label, value, stark, farbe = 'text-slate-800' }) => (
+  <div className="flex items-baseline justify-between gap-2 py-1.5 border-b border-dashed border-slate-200 last:border-0">
+    <span className="text-[11.5px] text-slate-500 leading-tight">{label}</span>
+    <span className={`num-input ${stark ? 'text-[15px] font-bold' : 'text-[13px] font-semibold'} ${farbe} whitespace-nowrap`}>{value}</span>
+  </div>
+);
+
+/* ============================================================
+   8. REGLER (Simulation)
+   ============================================================ */
+const SLIDERS = [
+  { key:'einkommen', icon:'💰', label:'Einkommen der Konsumenten', target:'a', factor: 0.0060, ziel:'Nachfrage' },
+  { key:'komplement', icon:'🔗', label:'Preis Komplementärgut',     target:'a', factor:-0.0040, ziel:'Nachfrage' },
+  { key:'substitut',  icon:'🔁', label:'Preis Substitutionsgut',    target:'a', factor: 0.0040, ziel:'Nachfrage' },
+  { key:'geschmack',  icon:'❤️', label:'Geschmack / Trend',         target:'a', factor: 0.0050, ziel:'Nachfrage' },
+  { key:'erwartung',  icon:'📈', label:'Erwarteter künftiger Preis',target:'a', factor: 0.0030, ziel:'Nachfrage' },
+  { key:'kosten',     icon:'🏭', label:'Produktionskosten',         target:'c', factor:-0.0050, ziel:'Angebot' },
+  { key:'anbieter',   icon:'🏬', label:'Anzahl der Anbieter',       target:'c', factor: 0.0050, ziel:'Angebot' },
+  { key:'technik',    icon:'⚙️', label:'Technischer Fortschritt',   target:'c', factor: 0.0040, ziel:'Angebot' },
+];
+const SLIDER_START = Object.fromEntries(SLIDERS.map(s => [s.key, 100]));
+
+function Regler({ s, wert, onChange }) {
+  const abw = wert - 100;
+  const richtung = abw === 0 ? null : (abw > 0 ? s.factor > 0 : s.factor < 0) ? 'rechts' : 'links';
+  return (
+    <div className="py-1.5">
+      <div className="flex items-center justify-between gap-2 mb-0.5">
+        <span className="text-[12px] text-slate-700 flex items-center gap-1.5 leading-tight">
+          <span className="text-base">{s.icon}</span>{s.label}
+        </span>
+        <span className="text-[12px] font-bold num-input text-slate-800">{wert} %</span>
+      </div>
+      <input type="range" min="50" max="150" step="5" value={wert}
+             className={s.target === 'c' ? 'sup' : ''}
+             onChange={e => onChange(s.key, Number(e.target.value))} />
+      {richtung && (
+        <div className={`text-[10.5px] font-semibold ${s.target === 'c' ? 'text-red-600' : 'text-blue-600'}`}>
+          → {s.ziel} verschiebt sich nach {richtung} ({richtung === 'rechts' ? 'steigt' : 'sinkt'})
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   9. AUFGABENKARTE
+   ============================================================ */
+function Aufgabenkarte({ task, nr, gesamt, answers, setAnswer, attempt, result, tippAn, setTippAn,
+                         zeigLoesung, setZeigLoesung, onPruefen, onWeiter }) {
+  const fertig = result && result.fertig;
+  const stufe = STUFEN.find(s => s.nr === task.stufe);
+  const feldOk = (k) => result && result.fr ? result.fr[k] : null;
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-blue-50 border-b border-blue-100">
+        <div className="min-w-0">
+          <div className="cap text-blue-800">Aufgabe {nr} von {gesamt}</div>
+          <div className="text-sm font-bold text-slate-800 truncate">{stufe.emoji} {task.titel}</div>
+        </div>
+        <span className="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full bg-white border border-blue-200 text-blue-700">
+          Stufe {task.stufe}
+        </span>
+      </div>
+
+      <div className="p-3 space-y-2">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <span className="text-xl">{task.sc.emoji}</span> Markt für {task.sc.name}
+        </div>
+
+        {task.aufgabe.map((abs, i) => abs === 'FUNKTIONEN'
+          ? <FunktionsBox key={i} m={task.m} />
+          : <p key={i} className="text-[13.5px] leading-relaxed text-slate-700">{abs}</p>)}
+
+        {/* Auswahlfragen */}
+        {(task.choices || []).map(c => (
+          <div key={c.key} className="pt-1">
+            <div className="text-[13px] font-semibold text-slate-800 mb-1.5">{c.frage}</div>
+            <div className="space-y-1.5">
+              {c.options.map((o, i) => {
+                const gewaehlt = answers[c.key] === i;
+                let stil = 'border-slate-200 bg-white';
+                if (fertig && i === c.correct) stil = 'border-green-500 bg-green-50';
+                else if (fertig && gewaehlt) stil = 'border-red-400 bg-red-50';
+                else if (gewaehlt) stil = 'border-blue-500 bg-blue-50 ring-2 ring-blue-200';
+                return (
+                  <button key={i} disabled={fertig}
+                    onClick={() => setAnswer(c.key, i)}
+                    className={`w-full text-left text-[13px] leading-snug px-3 py-2 rounded-lg border-2 transition ${stil}`}>
+                    <span className="font-bold mr-1.5">{String.fromCharCode(65 + i)})</span>{o}
+                    {fertig && i === c.correct && <span className="ml-1 text-green-700 font-bold">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        {/* Rechenfelder */}
+        {task.fields.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            {task.fields.map(f => {
+              const ok = feldOk(f.key);
+              return (
+                <label key={f.key} className="block">
+                  <span className="block text-[12px] text-slate-600 mb-1 leading-tight">{f.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text" inputMode="decimal" autoComplete="off"
+                      disabled={fertig}
+                      value={answers[f.key] || ''}
+                      onChange={e => setAnswer(f.key, e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !fertig) onPruefen(); }}
+                      placeholder="?"
+                      className={`num-input w-full px-2.5 py-2 rounded-lg border-2 text-[15px] font-semibold text-right
+                        ${ok === true ? 'border-green-500 bg-green-50 text-green-800'
+                        : ok === false ? 'border-red-400 bg-red-50 text-red-700'
+                        : 'border-slate-300 bg-white focus:border-blue-500 focus:outline-none'}`} />
+                    <span className="text-[12px] text-slate-500 w-12 shrink-0">{f.unit}</span>
+                  </div>
+                  {fertig && ok === false && (
+                    <span className="text-[11.5px] text-red-600">richtig: {fmt(f.correct, f.dec)} {f.unit}</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Rückmeldung */}
+        {result && !result.ok && !result.fertig && (
+          <div className="rounded-lg border-2 border-amber-400 bg-amber-50 px-3 py-2 text-[13px] text-amber-900 font-semibold pop">
+            Noch nicht ganz richtig – schau dir die rot markierten Felder nochmal an. Du hast noch einen Versuch.
+          </div>
+        )}
+        {result && result.ok && (
+          <div className="rounded-lg border-2 border-green-500 bg-green-50 px-3 py-2 text-[13px] text-green-800 font-semibold pop">
+            ✅ Richtig! {result.coins > 0 && <>+{result.coins} Münzen</>}{attempt > 0 && ' (im zweiten Versuch)'}
+          </div>
+        )}
+        {result && !result.ok && result.fertig && (
+          <div className="rounded-lg border-2 border-red-400 bg-red-50 px-3 py-2 text-[13px] text-red-800 font-semibold pop">
+            ❌ Leider nicht richtig. Sieh dir den Lösungsweg an – die nächste Aufgabe schaffst du!
+          </div>
+        )}
+
+        {/* Tipp */}
+        {tippAn
+          ? <Maskottchen text={task.tipp} figur="🧑‍🏫" />
+          : !fertig && (
+            <button onClick={() => setTippAn(true)}
+              className="text-[12.5px] font-semibold text-amber-700 underline underline-offset-2">
+              💡 Tipp anzeigen
+            </button>)}
+
+        {/* Lösungsweg */}
+        {fertig && (
+          <div>
+            <button onClick={() => setZeigLoesung(v => !v)}
+              className="text-[12.5px] font-semibold text-blue-700 underline underline-offset-2">
+              {zeigLoesung ? 'Lösungsweg ausblenden' : '📖 Lösungsweg anzeigen'}
+            </button>
+            {zeigLoesung && (
+              <ol className="mt-2 space-y-1.5 rounded-lg bg-slate-50 border border-slate-200 p-3">
+                {task.loesung.map((z, i) => (
+                  <li key={i} className="text-[12.5px] leading-relaxed text-slate-700 flex gap-2">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center">{i + 1}</span>
+                    <span className="font-mono">{z}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div className="flex gap-2 pt-1">
+          {!fertig
+            ? <button onClick={onPruefen}
+                className="flex-1 py-3 rounded-xl bg-blue-600 active:bg-blue-700 text-white font-bold text-sm shadow-sm">
+                {attempt === 0 ? 'Lösung prüfen' : 'Nochmal prüfen'}
+              </button>
+            : <button onClick={onWeiter}
+                className="flex-1 py-3 rounded-xl bg-green-600 active:bg-green-700 text-white font-bold text-sm shadow-sm">
+                {nr === gesamt ? 'Runde abschließen 🏁' : 'Nächste Aufgabe →'}
+              </button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   10. THEORIE
+   ============================================================ */
+const THEORIE = [
+  { t:'Marktgleichgewicht', e:'⚖️', body:(
+    <div className="space-y-2">
+      <p>Die <b>Nachfragefunktion</b> Q<sub>d</sub> = a − b·P fällt: Je höher der Preis, desto weniger wird gekauft.
+         Die <b>Angebotsfunktion</b> Q<sub>s</sub> = c + d·P steigt: Je höher der Preis, desto mehr wird produziert.</p>
+      <p className="font-mono bg-slate-50 border border-slate-200 rounded p-2">Gleichgewicht: Q<sub>d</sub> = Q<sub>s</sub> → P* = (a − c) : (b + d) → Q* = a − b·P*</p>
+      <p>Im Gleichgewicht wird der Markt <b>geräumt</b>: Es gibt weder Überschuss noch Mangel.</p>
+    </div>) },
+  { t:'Konsumenten- und Produzentenrente', e:'🟩', body:(
+    <div className="space-y-2">
+      <p>Der <b>Prohibitivpreis</b> ist der Preis, bei dem die Nachfrage auf null sinkt (Q<sub>d</sub> = 0 → P = a : b).
+         Der <b>Mindestangebotspreis</b> ist der Preis, ab dem überhaupt angeboten wird (Q<sub>s</sub> = 0 → P = −c : d).</p>
+      <p className="font-mono bg-slate-50 border border-slate-200 rounded p-2">
+        KR = ½ · Q* · (Prohibitivpreis − P*)<br />
+        PR = ½ · Q* · (P* − Mindestangebotspreis)<br />
+        Gesamtwohlfahrt = KR + PR
+      </p>
+      <p>Die <b>Konsumentenrente</b> ist der Vorteil der Käufer: Sie wären bereit gewesen, mehr zu zahlen, als sie tatsächlich zahlen mussten
+         (grüne Fläche zwischen Nachfragekurve und Preislinie). Die <b>Produzentenrente</b> ist der Vorteil der Verkäufer
+         (rote Fläche zwischen Preislinie und Angebotskurve).</p>
+    </div>) },
+  { t:'Verschiebung der Kurven', e:'↔️', body:(
+    <div className="space-y-2">
+      <p><b>Wichtig:</b> Eine Änderung des <i>Güterpreises selbst</i> führt zu einer <b>Bewegung auf</b> der Kurve.
+         Alle <i>anderen</i> Einflussgrößen verschieben die <b>ganze Kurve</b> (ceteris paribus).</p>
+      <table className="w-full text-[12.5px] border-collapse">
+        <thead><tr className="bg-slate-100"><th className="border p-1.5 text-left">Änderung</th><th className="border p-1.5 text-left">Wirkung</th></tr></thead>
+        <tbody>
+          <tr><td className="border p-1.5">Einkommen steigt (normales Gut)</td><td className="border p-1.5 text-blue-700">Nachfrage → rechts</td></tr>
+          <tr><td className="border p-1.5">Preis des Komplementärguts steigt</td><td className="border p-1.5 text-blue-700">Nachfrage → links</td></tr>
+          <tr><td className="border p-1.5">Preis des Substitutionsguts steigt</td><td className="border p-1.5 text-blue-700">Nachfrage → rechts</td></tr>
+          <tr><td className="border p-1.5">Trend / Präferenz für das Gut steigt</td><td className="border p-1.5 text-blue-700">Nachfrage → rechts</td></tr>
+          <tr><td className="border p-1.5">Erwartung steigender Preise</td><td className="border p-1.5 text-blue-700">Nachfrage heute → rechts</td></tr>
+          <tr><td className="border p-1.5">Produktionskosten / Steuer steigen</td><td className="border p-1.5 text-red-600">Angebot → links</td></tr>
+          <tr><td className="border p-1.5">Technischer Fortschritt / Subvention</td><td className="border p-1.5 text-red-600">Angebot → rechts</td></tr>
+          <tr><td className="border p-1.5">Mehr Anbieter im Markt</td><td className="border p-1.5 text-red-600">Angebot → rechts</td></tr>
+        </tbody>
+      </table>
+      <p>Rechnerisch ändert sich nur das <b>absolute Glied</b>: Nachfrage nach rechts → a wird größer; Angebot nach rechts → c wird größer.</p>
+    </div>) },
+  { t:'Höchst- und Mindestpreise', e:'🏛️', body:(
+    <div className="space-y-2">
+      <p>Ein <b>Höchstpreis</b> (z. B. Mietpreisbremse) wirkt nur <b>unterhalb</b> des Gleichgewichtspreises.
+         Dann gilt Q<sub>d</sub> &gt; Q<sub>s</sub> → <b>Nachfrageüberschuss (Mangel)</b>. Gehandelt wird die kleinere Menge, also das Angebot.</p>
+      <p>Ein <b>Mindestpreis</b> (z. B. Mindestlohn, Agrarpreise) wirkt nur <b>oberhalb</b> des Gleichgewichtspreises.
+         Dann gilt Q<sub>s</sub> &gt; Q<sub>d</sub> → <b>Angebotsüberschuss</b>. Gehandelt wird die kleinere Menge, also die Nachfrage.</p>
+      <p className="font-mono bg-slate-50 border border-slate-200 rounded p-2">
+        Überschuss = |Q<sub>s</sub>(P<sub>fix</sub>) − Q<sub>d</sub>(P<sub>fix</sub>)|
+      </p>
+      <p>Beide Eingriffe verhindern die Markträumung und verursachen einen <b>Wohlfahrtsverlust</b>.</p>
+    </div>) },
+  { t:'Preiselastizität der Nachfrage', e:'📐', body:(
+    <div className="space-y-2">
+      <p className="font-mono bg-slate-50 border border-slate-200 rounded p-2">
+        ε = (ΔQ : Q<sub>1</sub>) : (ΔP : P<sub>1</sub>)
+      </p>
+      <p>ε gibt an, um wie viel Prozent sich die Nachfragemenge ändert, wenn der Preis um 1 % steigt.
+         Bei normalem Verlauf ist ε <b>negativ</b>; beurteilt wird der Betrag |ε|.</p>
+      <ul className="list-disc pl-5 space-y-1">
+        <li><b>|ε| &gt; 1 elastisch:</b> Menge reagiert stark. Preiserhöhung → Umsatz sinkt.</li>
+        <li><b>|ε| &lt; 1 unelastisch:</b> Menge reagiert schwach. Preiserhöhung → Umsatz steigt.</li>
+        <li><b>|ε| = 1 isoelastisch:</b> Umsatz bleibt gleich.</li>
+      </ul>
+      <p>Unelastisch reagieren typischerweise lebensnotwendige Güter ohne Ersatz (Medikamente, Benzin, Grundnahrungsmittel),
+         elastisch dagegen Luxusgüter und Güter mit vielen Substituten.</p>
+    </div>) },
+  { t:'Rechenweg-Spickzettel', e:'🧮', body:(
+    <div className="space-y-2 font-mono text-[12.5px]">
+      <p>1. Gleichsetzen:  a − b·P = c + d·P</p>
+      <p>2. Sortieren:     a − c = (b + d)·P</p>
+      <p>3. Auflösen:      P* = (a − c) : (b + d)</p>
+      <p>4. Einsetzen:     Q* = a − b·P*   (Probe: Q* = c + d·P*)</p>
+      <p>5. Renten:        KR = ½·Q*·(a:b − P*)   PR = ½·Q*·(P* + c:d)</p>
+      <p>6. Fixpreis:      Qd(P) und Qs(P) einzeln berechnen, Differenz bilden</p>
+      <p>7. Elastizität:   ε = (ΔQ:Q₁) : (ΔP:P₁)</p>
+    </div>) },
+];
+
+function Theorie() {
+  const [offen, setOffen] = useState(0);
+  return (
+    <div className="space-y-2">
+      {THEORIE.map((s, i) => (
+        <div key={i} className="card overflow-hidden">
+          <button onClick={() => setOffen(offen === i ? -1 : i)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left">
+            <span className="font-bold text-[14px] text-slate-800">{s.e} {s.t}</span>
+            <span className="text-slate-400 text-lg">{offen === i ? '−' : '+'}</span>
+          </button>
+          {offen === i && (
+            <div className="px-3 pb-3 text-[13px] leading-relaxed text-slate-700 space-y-2 border-t border-[#EFE7D5] pt-2">
+              {s.body}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
+   11. FORTSCHRITT
+   ============================================================ */
+function Fortschritt({ p, onReset, onName }) {
+  const lvl = levelOf(p.xp);
+  const inLvl = p.xp % LEVEL_XP;
+  const quote = p.totalT ? Math.round((p.totalOk / p.totalT) * 100) : 0;
+  return (
+    <div className="space-y-2">
+      <Card title="Dein Stand">
+        <div className="flex items-center gap-3">
+          <div className="w-14 h-14 rounded-xl bg-blue-600 text-white flex flex-col items-center justify-center shrink-0">
+            <span className="text-[9px] leading-none">LEVEL</span>
+            <span className="text-2xl font-bold leading-none">{lvl}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-slate-800 truncate">{p.name || 'Ohne Namen'}</div>
+            <div className="text-[12px] text-slate-500">{titelOf(lvl)}</div>
+            <div className="mt-1.5 h-2.5 rounded-full bg-slate-200 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 to-blue-700 transition-all"
+                   style={{ width: `${(inLvl / LEVEL_XP) * 100}%` }}></div>
+            </div>
+            <div className="text-[10.5px] text-slate-400 mt-0.5">{inLvl} / {LEVEL_XP} XP bis Level {lvl + 1}</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+          <div className="rounded-lg bg-amber-50 border border-amber-200 py-2">
+            <div className="text-lg font-bold text-amber-700 num-input">{fmt(p.coins)}</div>
+            <div className="text-[10px] text-amber-700">🪙 Münzen</div>
+          </div>
+          <div className="rounded-lg bg-green-50 border border-green-200 py-2">
+            <div className="text-lg font-bold text-green-700 num-input">{quote} %</div>
+            <div className="text-[10px] text-green-700">Trefferquote</div>
+          </div>
+          <div className="rounded-lg bg-orange-50 border border-orange-200 py-2">
+            <div className="text-lg font-bold text-orange-600 num-input">{p.bestStreak}</div>
+            <div className="text-[10px] text-orange-600">🔥 beste Serie</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Nach Niveaustufe">
+        {STUFEN.map(s => {
+          const st = p.stats[s.nr], q = st.t ? Math.round(st.ok / st.t * 100) : 0;
+          const sterne = st.ok >= 15 ? 3 : st.ok >= 8 ? 2 : st.ok >= 3 ? 1 : 0;
+          return (
+            <div key={s.nr} className="py-1.5 border-b border-dashed border-slate-200 last:border-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12.5px] font-semibold text-slate-700">{s.emoji} Stufe {s.nr} – {s.kurz}</span>
+                <span className="text-[12px] text-amber-500 tracking-tight">
+                  {'★'.repeat(sterne)}<span className="text-slate-300">{'★'.repeat(3 - sterne)}</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                  <div className="h-full bg-blue-500" style={{ width: `${q}%` }}></div>
+                </div>
+                <span className="text-[11px] text-slate-500 num-input w-20 text-right">{st.ok} / {st.t} richtig</span>
+              </div>
+            </div>
+          );
+        })}
+      </Card>
+
+      <Card title="Abzeichen">
+        <div className="grid grid-cols-3 gap-2">
+          {BADGES.map(b => {
+            const hat = b.cond(p);
+            return (
+              <div key={b.id} className={`rounded-lg border p-2 text-center ${hat ? 'bg-yellow-50 border-yellow-300' : 'bg-slate-50 border-slate-200 opacity-45'}`}>
+                <div className="text-xl leading-none">{hat ? b.emoji : '🔒'}</div>
+                <div className="text-[10px] mt-1 leading-tight text-slate-700">{b.name}</div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card title="Einstellungen">
+        <label className="block text-[12px] text-slate-600 mb-1">Dein Name (nur auf diesem Gerät gespeichert)</label>
+        <input type="text" value={p.name} onChange={e => onName(e.target.value)} placeholder="z. B. Alex K."
+               className="w-full px-2.5 py-2 rounded-lg border-2 border-slate-300 focus:border-blue-500 focus:outline-none text-sm" />
+        <p className="text-[11.5px] text-slate-500 mt-2 leading-snug">
+          Alle Daten bleiben ausschließlich in diesem Browser (localStorage). Es werden keine Daten an einen Server gesendet.
+        </p>
+        <button onClick={onReset}
+          className="mt-2 w-full py-2 rounded-lg border-2 border-red-300 text-red-600 font-semibold text-[13px] active:bg-red-50">
+          Fortschritt zurücksetzen
+        </button>
+      </Card>
+    </div>
+  );
+}
+
+/* ============================================================
+   12. HAUPTKOMPONENTE
+   ============================================================ */
+function App() {
+  const [p, setP] = useState(loadProgress);
+  useEffect(() => saveProgress(p), [p]);
+  const schmal = useKompakt();
+
+  const [tab, setTab] = useState('sim');
+  const [toast, setToast] = useState(null);
+  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), 1800); return () => clearTimeout(id); }, [toast]);
+
+  /* ---- Simulation ---- */
+  const [scKey, setScKey] = useState(SCENARIOS[0].key);
+  const [basis, setBasis] = useState(() => makeMarket(SCENARIOS[0]));
+  const [vals, setVals] = useState(SLIDER_START);
+  const [preis, setPreis] = useState(() => basis.P);
+
+  const simMarkt = useMemo(() => {
+    let a = basis.a, c = basis.c;
+    for (const s of SLIDERS) {
+      const shift = basis.a * s.factor * (vals[s.key] - 100);
+      if (s.target === 'a') a += shift; else c += shift;
+    }
+    a = Math.max(Math.round(basis.a * 0.25), Math.round(a));
+    c = Math.min(Math.round(basis.a * 0.6), Math.round(c));
+    return { ...basis, a, c };
+  }, [basis, vals]);
+
+  const veraendert = SLIDERS.some(s => vals[s.key] !== 100);
+  const simK = marktKennzahlen(simMarkt);
+  const pTop = prohibitiv(simMarkt);
+  const preisStep = useMemo(() => {
+    const roh = pTop / 60, mag = Math.pow(10, Math.floor(Math.log10(roh))), n = roh / mag;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+  }, [pTop]);
+  useEffect(() => { setPreis(v => clamp(v, 0, pTop)); }, [pTop]);
+
+  const neuesSzenario = (key) => {
+    const sc = scById(key), m = makeMarket(sc);
+    setScKey(key); setBasis(m); setVals(SLIDER_START); setPreis(m.P);
+  };
+  const reglerReset = () => { setVals(SLIDER_START); setPreis(basis.P); };
+
+  /* ---- Aufgaben ---- */
+  const RUNDE_LAENGE = 5;
+  const [stufe, setStufe] = useState(1);
+  const [runde, setRunde] = useState(() => makeRunde(1, RUNDE_LAENGE));
+  const [idx, setIdx] = useState(0);
+  const [erg, setErg] = useState([]);
+  const [ant, setAnt] = useState({});
+  const [versuch, setVersuch] = useState(0);
+  const [res, setRes] = useState(null);
+  const [zeigLoesung, setZeigLoesung] = useState(false);
+  const [tippAn, setTippAn] = useState(false);
+  const [chartModus, setChartModus] = useState('sim');
+
+  const task = idx < runde.length ? runde[idx] : null;
+  const rundeFertig = idx >= runde.length;
+  const setAnswer = (k, v) => setAnt(a => ({ ...a, [k]: v }));
+  const resetFeld = () => { setAnt({}); setVersuch(0); setRes(null); setZeigLoesung(false); setTippAn(false); };
+
+  const neueRunde = (s) => {
+    setStufe(s); setRunde(makeRunde(s, RUNDE_LAENGE)); setIdx(0); setErg([]); resetFeld();
+    setTab('aufgabe'); setChartModus('task');
+  };
+
+  const pruefen = () => {
+    const t = task; if (!t) return;
+    const fr = {}; let ok = true;
+    t.fields.forEach(f => {
+      const v = parseNum(ant[f.key] || '');
+      const gut = isFinite(v) && Math.abs(v - f.correct) <= f.tol;
+      fr[f.key] = gut; if (!gut) ok = false;
+    });
+    (t.choices || []).forEach(c => {
+      const gut = ant[c.key] === c.correct;
+      fr[c.key] = gut; if (!gut) ok = false;
+    });
+
+    if (ok) {
+      const coins = versuch === 0 ? t.reward : Math.round(t.reward * 0.6);
+      setRes({ ok: true, fr, fertig: true, coins });
+      setErg(e => { const n = [...e]; n[idx] = versuch === 0 ? 'ok' : 'ok2'; return n; });
+      setP(pr => {
+        const streak = pr.streak + 1;
+        return { ...pr, coins: pr.coins + coins, xp: pr.xp + coins,
+          totalT: pr.totalT + 1, totalOk: pr.totalOk + 1, streak,
+          bestStreak: Math.max(pr.bestStreak, streak),
+          stats: { ...pr.stats, [t.stufe]: { t: pr.stats[t.stufe].t + 1, ok: pr.stats[t.stufe].ok + 1 } } };
+      });
+      setToast(`+${coins} 🪙`);
+    } else if (versuch === 0) {
+      setRes({ ok: false, fr, fertig: false }); setVersuch(1);
+    } else {
+      setRes({ ok: false, fr, fertig: true, coins: 0 });
+      setErg(e => { const n = [...e]; n[idx] = 'fail'; return n; });
+      setZeigLoesung(true);
+      setP(pr => ({ ...pr, totalT: pr.totalT + 1, streak: 0,
+        stats: { ...pr.stats, [t.stufe]: { t: pr.stats[t.stufe].t + 1, ok: pr.stats[t.stufe].ok } } }));
+    }
+  };
+  const weiter = () => { setIdx(i => i + 1); resetFeld(); };
+
+  useEffect(() => { setChartModus(tab === 'aufgabe' ? 'task' : 'sim'); }, [tab]);
+
+  /* ---- Diagramm-Eigenschaften ---- */
+  const chartProps = (() => {
+    if (chartModus === 'task' && task) {
+      const c = task.chart || {}, fertig = !!(res && res.fertig);
+      const zeigNeu = !!task.m2 && fertig;
+      return {
+        m: zeigNeu ? task.m2 : task.m,
+        compare: zeigNeu ? task.m : null,
+        priceLine: c.priceLine,
+        showSurplus: !!c.showSurplus,
+        showEq: c.showEq === false ? fertig : true,
+        points: fertig ? c.points : null,
+        gapLabel: !!c.gapLabel && fertig,
+        sc: task.sc,
+        titel: `MARKT FÜR ${task.sc.name.toUpperCase()}`,
+      };
+    }
+    return {
+      m: simMarkt, compare: veraendert ? basis : null, priceLine: preis,
+      showSurplus: true, showEq: true, gapLabel: true, sc: scById(scKey),
+      titel: `MARKT FÜR ${scById(scKey).name.toUpperCase()}`,
+    };
+  })();
+
+  const lvl = levelOf(p.xp);
+  const ueberschuss = qs(simMarkt, preis) - qd(simMarkt, preis);
+
+  const zeigLinks  = tab === 'sim';
+  const zeigChart  = tab === 'sim' || tab === 'aufgabe';
+  const zeigRechts = tab === 'sim';
+
+  /* ---- Layout ---- */
+  return (
+    <div className="min-h-screen">
+      {/* Kopfzeile */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#E6DCC6]">
+        <div className="max-w-[1400px] mx-auto px-3 py-2 flex items-center gap-2">
+          <span className="text-xl">📈</span>
+          <h1 className="pixel font-bold text-[13px] sm:text-lg text-blue-800 uppercase truncate flex-1">Marktnachfrage-Simulator</h1>
+          <span className="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-800">
+            Level {lvl} ⭐
+          </span>
+          <span className="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full bg-amber-50 border border-amber-300 text-amber-700 num-input">
+            🪙 {fmt(p.coins)}
+          </span>
+        </div>
+      </header>
+
+      {toast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pop px-4 py-2 rounded-full bg-green-600 text-white font-bold text-sm shadow-lg">
+          {toast}
+        </div>
+      )}
+
+      <main className="max-w-[1400px] mx-auto px-2 sm:px-3 pt-3 pb-28 lg:pb-6">
+        {/* Schrittleiste (nur große Displays) */}
+        <div className="hidden lg:flex items-center gap-1 mb-3 text-[12px]">
+          {[
+            { k:'sim', i:'⚙️', l:'Parameter einstellen' },
+            { k:'aufgabe', i:'✏️', l:'Berechnen & Lösen' },
+            { k:'theorie', i:'📘', l:'Theorie' },
+            { k:'fortschritt', i:'🏆', l:'Ergebnis & Fortschritt' },
+          ].map((s, i, arr) => (
+            <React.Fragment key={s.k}>
+              <button onClick={() => setTab(s.k)}
+                className={`px-3 py-2 rounded-lg font-semibold border transition ${tab === s.k
+                  ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-[#E6DCC6] hover:bg-slate-50'}`}>
+                {s.i} {s.l}
+              </button>
+              {i < arr.length - 1 && <span className="text-slate-300">›</span>}
+            </React.Fragment>
+          ))}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[248px_minmax(0,1fr)_236px] items-start">
+          {/* LINKE SPALTE: Szenario + Regler */}
+          <div className={`${zeigLinks ? 'block' : 'hidden'} lg:block order-3 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-2 space-y-2`}>
+            <Card title="Szenario">
+              <select value={scKey} onChange={e => neuesSzenario(e.target.value)}
+                className="w-full px-2 py-2 rounded-lg border-2 border-slate-300 bg-white text-sm font-semibold focus:border-blue-500 focus:outline-none">
+                {SCENARIOS.map(s => <option key={s.key} value={s.key}>{s.emoji} {s.name}</option>)}
+              </select>
+              <div className="mt-2 text-center text-4xl">{scById(scKey).emoji}</div>
+              <button onClick={() => neuesSzenario(scKey)}
+                className="mt-2 w-full py-1.5 rounded-lg border border-slate-300 text-[12px] font-semibold text-slate-600 active:bg-slate-50">
+                🎲 Neue Zahlen würfeln
+              </button>
+              <div className="mt-2 font-mono text-[11.5px] leading-6 bg-slate-50 border border-slate-200 rounded p-2">
+                <div className="text-blue-700"><Fn m={simMarkt} kind="d" /></div>
+                <div className="text-red-600"><Fn m={simMarkt} kind="s" /></div>
+              </div>
+            </Card>
+
+            <Card title="Steuerung" right={
+              <button onClick={reglerReset} className="text-[11px] font-semibold text-blue-700 underline">zurücksetzen</button>
+            }>
+              <div className="pb-2 mb-1 border-b border-slate-200">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <span className="text-[12px] text-slate-700 flex items-center gap-1.5"><span className="text-base">💶</span>Marktpreis (P)</span>
+                  <span className="text-[12px] font-bold num-input text-slate-800">{fmt(preis, preisStep < 1 ? 2 : 0)} €</span>
+                </div>
+                <input type="range" className="neutral" min="0" max={pTop} step={preisStep}
+                       value={preis} onChange={e => setPreis(Number(e.target.value))} />
+                <button onClick={() => setPreis(simK.P)}
+                  className="mt-0.5 text-[11px] font-semibold text-amber-700 underline">auf Gleichgewichtspreis setzen</button>
+              </div>
+              {SLIDERS.map(s => <Regler key={s.key} s={s} wert={vals[s.key]}
+                                        onChange={(k, v) => setVals(o => ({ ...o, [k]: v }))} />)}
+            </Card>
+          </div>
+
+          {/* MITTE OBEN: Diagramm */}
+          <div className={`${zeigChart ? 'block' : 'hidden'} lg:block order-1 lg:order-none lg:col-start-2 lg:row-start-1 min-w-0`}>
+            <div className="card p-2 sm:p-3">
+              {task && (
+                <div className="flex items-center justify-center gap-1 mb-1">
+                  {['sim', 'task'].map(mm => (
+                    <button key={mm} onClick={() => setChartModus(mm)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${chartModus === mm
+                        ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-300'}`}>
+                      {mm === 'sim' ? '🎛️ Simulation' : '✏️ Aufgabe'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <MarktChart {...chartProps} kompakt={schmal} />
+              {chartModus === 'task' && task && !(res && res.fertig) && (task.m2 || task.chart.showEq === false) && (
+                <p className="text-center text-[11px] text-slate-500 mt-1">
+                  {task.m2
+                    ? 'Die verschobene Kurve wird nach dem Prüfen eingezeichnet.'
+                    : 'Der gesuchte Punkt wird erst nach dem Prüfen markiert – rechne ihn selbst aus.'}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* MITTE UNTEN: Aufgabe / Hinweis / Theorie / Fortschritt */}
+          <div className="order-4 lg:order-none lg:col-start-2 lg:row-start-2 space-y-3 min-w-0">
+            {tab === 'sim' && (
+              <Card title="Hinweis">
+                <Maskottchen figur="🧑‍🎓" text={
+                  <>Verändere die Regler und beobachte, wie sich <b>Angebot</b>, <b>Nachfrage</b> und das <b>Gleichgewicht</b> verändern.
+                  Achtung: Nur der Güterpreis bewegt dich <i>auf</i> der Kurve – alle anderen Größen verschieben die <i>ganze</i> Kurve.</>
+                } />
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button onClick={() => neueRunde(stufe)}
+                    className="py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[13px]">✏️ Aufgaben starten</button>
+                  <button onClick={() => setTab('theorie')}
+                    className="py-2.5 rounded-xl border-2 border-blue-200 text-blue-700 font-bold text-[13px]">📘 Theorie</button>
+                </div>
+              </Card>
+            )}
+
+            {tab === 'aufgabe' && (rundeFertig ? (
+              <Card title="Runde abgeschlossen">
+                <div className="text-center py-3">
+                  <div className="text-5xl mb-2">{erg.filter(e => e === 'ok' || e === 'ok2').length >= 4 ? '🏆' : '💪'}</div>
+                  <div className="text-lg font-bold text-slate-800">
+                    {erg.filter(e => e === 'ok' || e === 'ok2').length} von {RUNDE_LAENGE} richtig
+                  </div>
+                  <div className="text-[13px] text-slate-500 mt-1">Stufe {stufe === 0 ? 'Gemischt' : stufe}</div>
+                  <div className="flex justify-center gap-1.5 mt-3">
+                    {erg.map((e, i) => (
+                      <span key={i} className={`w-3.5 h-3.5 rounded-full ${e === 'ok' ? 'bg-green-500' : e === 'ok2' ? 'bg-yellow-400' : 'bg-red-400'}`}></span>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    <button onClick={() => neueRunde(stufe)}
+                      className="py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[13px]">🔁 Neue Runde</button>
+                    <button onClick={() => setTab('fortschritt')}
+                      className="py-2.5 rounded-xl border-2 border-blue-200 text-blue-700 font-bold text-[13px]">🏆 Fortschritt</button>
+                  </div>
+                </div>
+              </Card>
+            ) : (
+              <Aufgabenkarte task={task} nr={idx + 1} gesamt={RUNDE_LAENGE}
+                answers={ant} setAnswer={setAnswer} attempt={versuch} result={res}
+                tippAn={tippAn} setTippAn={setTippAn}
+                zeigLoesung={zeigLoesung} setZeigLoesung={setZeigLoesung}
+                onPruefen={pruefen} onWeiter={weiter} />
+            ))}
+
+            {tab === 'theorie' && <Theorie />}
+            {tab === 'fortschritt' && (
+              <Fortschritt p={p}
+                onName={n => setP(o => ({ ...o, name: n }))}
+                onReset={() => { if (confirm('Wirklich den gesamten Fortschritt auf diesem Gerät löschen?')) setP({ ...DEFAULT_PROGRESS, stats: leerStats() }); }} />
+            )}
+          </div>
+
+          {/* RECHTE SPALTE: Kennzahlen + Aufgabenfortschritt */}
+          <div className={`${zeigRechts ? 'block' : 'hidden'} lg:block order-2 lg:order-none lg:col-start-3 lg:row-start-1 lg:row-span-2 space-y-2`}>
+            <Card title={`Simulation · ${scById(scKey).name}`}>
+              {chartModus === 'task' && (
+                <p className="mb-2 rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-[10.5px] leading-snug text-amber-800">
+                  Diese Werte gehören zum Simulationsmarkt links – <b>nicht</b> zur aktuellen Aufgabe.
+                </p>
+              )}
+              <Wert label="Gleichgewichtspreis P*" value={eur(simK.P)} stark farbe="text-amber-600" />
+              <Wert label="Gleichgewichtsmenge Q*" value={`${fmt(simK.Q)} ${scById(scKey).qUnit}`} stark farbe="text-amber-600" />
+              <Wert label={`Nachfrage bei ${eur(preis)}`} value={`${fmt(qd(simMarkt, preis))} ${scById(scKey).qUnit}`} farbe="text-blue-600" />
+              <Wert label={`Angebot bei ${eur(preis)}`} value={`${fmt(qs(simMarkt, preis))} ${scById(scKey).qUnit}`} farbe="text-red-600" />
+              <Wert
+                label={Math.abs(ueberschuss) < 0.5 ? 'Markt geräumt' : ueberschuss > 0 ? 'Angebotsüberschuss' : 'Nachfrageüberschuss (Mangel)'}
+                value={Math.abs(ueberschuss) < 0.5 ? '0' : fmt(Math.abs(ueberschuss))}
+                farbe={Math.abs(ueberschuss) < 0.5 ? 'text-green-600' : 'text-purple-700'} />
+              <Wert label="Konsumentenrente" value={eur(simK.KR)} farbe="text-green-700" />
+              <Wert label="Produzentenrente" value={eur(simK.PR)} farbe="text-red-600" />
+              <Wert label="Gesamtwohlfahrt" value={eur(simK.W)} stark />
+              <Wert label="Prohibitivpreis" value={eur(simK.pMaxD)} />
+              <Wert label="Mindestangebotspreis" value={eur(simK.pMinS)} />
+            </Card>
+
+            <Card title="Niveaustufe">
+              <div className="space-y-1.5">
+                {STUFEN.map(s => (
+                  <button key={s.nr} onClick={() => neueRunde(s.nr)}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg border-2 text-[12px] font-semibold transition ${stufe === s.nr
+                      ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+                    {s.emoji} Stufe {s.nr} – {s.kurz}
+                  </button>
+                ))}
+                <button onClick={() => neueRunde(0)}
+                  className={`w-full text-left px-2.5 py-2 rounded-lg border-2 text-[12px] font-semibold ${stufe === 0
+                    ? 'border-purple-500 bg-purple-50 text-purple-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+                  🎲 Gemischt (alle Stufen)
+                </button>
+              </div>
+            </Card>
+
+            <Card title="Aufgabenfortschritt">
+              {Array.from({ length: RUNDE_LAENGE }).map((_, i) => {
+                const e = erg[i], aktiv = i === idx && !rundeFertig;
+                return (
+                  <div key={i} className={`flex items-center justify-between py-1 text-[12px] ${aktiv ? 'font-bold text-blue-700' : 'text-slate-600'}`}>
+                    <span>Aufgabe {i + 1}</span>
+                    <span>{e === 'ok' ? '✅' : e === 'ok2' ? '🟡' : e === 'fail' ? '❌' : aktiv ? '▶️' : '⚪'}</span>
+                  </div>
+                );
+              })}
+              <div className="mt-2 pt-2 border-t border-dashed border-slate-200 text-[11px] text-slate-500">
+                Serie: 🔥 {p.streak} · Beste: {p.bestStreak}
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        <p className="hidden lg:block text-center text-[11px] text-slate-400 mt-4">
+          Marktnachfrage-Simulator · Angebot &amp; Nachfrage · Fortschritt wird nur lokal auf diesem Gerät gespeichert
+        </p>
+      </main>
+
+      {/* Untere Navigation (Smartphone/Tablet hochkant) */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-[#E6DCC6] safe-b">
+        <div className="grid grid-cols-4">
+          {[
+            { k:'sim', i:'📊', l:'Markt' },
+            { k:'aufgabe', i:'✏️', l:'Aufgaben' },
+            { k:'theorie', i:'📘', l:'Theorie' },
+            { k:'fortschritt', i:'🏆', l:'Fortschritt' },
+          ].map(t => (
+            <button key={t.k} onClick={() => setTab(t.k)}
+              className={`py-2.5 flex flex-col items-center gap-0.5 ${tab === t.k ? 'text-blue-700' : 'text-slate-400'}`}>
+              <span className="text-lg leading-none">{t.i}</span>
+              <span className="text-[10px] font-bold">{t.l}</span>
+              <span className={`h-0.5 w-8 rounded-full ${tab === t.k ? 'bg-blue-600' : 'bg-transparent'}`}></span>
+            </button>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
