@@ -11,7 +11,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   :root{
-    --paper:#FDF8EE; --card:#FFFFFF; --line:#E6DCC6; --ink:#1F2937;
+    --paper:#FBF8F1; --card:#FFFFFF; --line:#DCE6F2; --ink:#1F2937;
     --blue:#1D4ED8; --demand:#2563EB; --supply:#EF4444; --eq:#FACC15;
   }
   html,body{background:var(--paper);}
@@ -19,6 +19,24 @@
   body{color:var(--ink); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
   .pixel{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace; letter-spacing:.06em;}
   .card{background:var(--card); border:1px solid var(--line); border-radius:12px;}
+  .karte{background:#FFFFFF; border:1px solid #DCE6F2; border-radius:14px;
+    box-shadow:0 1px 2px rgba(15,23,42,.05);}
+  /* Banderole über der Karte, mit eingekerbten Enden wie ein Wimpel */
+  .banner{position:absolute; top:-13px; left:50%; transform:translateX(-50%); white-space:nowrap;
+    display:flex; align-items:center; gap:7px; padding:5px 22px; color:#fff; z-index:2;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    clip-path:polygon(0 0, 100% 0, calc(100% - 11px) 50%, 100% 100%, 0 100%, 11px 50%);
+    box-shadow:0 2px 0 rgba(0,0,0,.14);}
+  .b-blau{background:#2563EB} .b-lila{background:#7C3AED} .b-gruen{background:#16A34A}
+  .b-gelb{background:#D97706} .b-rot{background:#DC2626} .b-tuerkis{background:#0891B2}
+  .banner .nr{width:15px; height:15px; border-radius:4px; background:rgba(255,255,255,.28);
+    display:flex; align-items:center; justify-content:center; font-size:10px; letter-spacing:0;}
+  /* Knöpfe mit harter Schattenkante im Pixel-Stil */
+  .knopf{box-shadow:0 3px 0 rgba(0,0,0,.20); transition:transform .06s, box-shadow .06s;}
+  .knopf:active{transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.20);}
+  .produktkarte{transition:transform .08s;}
+  .produktkarte:active{transform:translateY(1px);}
   .cap{font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#6B7280;}
   /* Slider im Retro-Look, gut mit dem Finger bedienbar */
   input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:22px; background:transparent;}
@@ -220,6 +238,48 @@ const SCENARIOS = [
       P_GESCHMACK, P_ERWARTUNG,
     ] },
 
+  { key:'konsole', name:'Gaming-Konsolen', kurz:'Konsolen', emoji:'🎮', sprite:'konsole',
+    qUnit:'Stück', gutTyp:'normales Gut', komp:'Spiele', subst:'Gaming-PCs',
+    prices:[300,400,500], quantities:[600,800,1000], kb:[150,200,250], kd:[100,150,200], steps:[25,50],
+    parameter:[
+      P_EINKOMMEN,
+      { key:'komplement', label:'Preis Komplementärgut (Spiel)', sprite:'puzzle',
+        min:30, max:90, step:5, basis:60, einheit:'€', k:-0.0035,
+        hilfe:'Ohne Spiele ist die Konsole nutzlos – beides wird zusammen gekauft.' },
+      { key:'substitut', label:'Preis Substitutionsgut (Gaming-PC)', sprite:'tausch',
+        min:600, max:1400, step:50, basis:900, einheit:'€', k:0.00022,
+        hilfe:'Ein Gaming-PC erfüllt denselben Zweck.' },
+      P_GESCHMACK, P_ERWARTUNG,
+    ] },
+
+  { key:'kleidung', name:'T-Shirts', kurz:'Kleidung', emoji:'👕', sprite:'kleidung',
+    qUnit:'Stück', gutTyp:'normales Gut', komp:'Waschmittel', subst:'Second-Hand-Kleidung',
+    prices:[10,15,20,25], quantities:[800,1000,1200], kb:[5,10,15,20], kd:[5,10], steps:[1,2,5],
+    parameter:[
+      P_EINKOMMEN,
+      { key:'komplement', label:'Preis Komplementärgut (Waschmittel)', sprite:'puzzle',
+        min:2, max:8, step:0.5, basis:4, einheit:'€', k:-0.020,
+        hilfe:'Wer mehr Kleidung trägt, muss auch mehr waschen.' },
+      { key:'substitut', label:'Preis Substitutionsgut (Second-Hand)', sprite:'tausch',
+        min:2, max:14, step:0.5, basis:6, einheit:'€', k:0.016,
+        hilfe:'Gebrauchte Kleidung ist ein naher Ersatz.' },
+      P_GESCHMACK, P_ERWARTUNG,
+    ] },
+
+  { key:'kinoticket', name:'Kinotickets', kurz:'Kinotickets', emoji:'🎟️', sprite:'kinoticket',
+    qUnit:'Tickets', gutTyp:'normales Gut', komp:'Popcorn & Getränke', subst:'Streaming-Abos',
+    prices:[8,10,12], quantities:[400,600,800], kb:[4,5,6,8], kd:[2,4,5,6], steps:[1,2],
+    parameter:[
+      P_EINKOMMEN,
+      { key:'komplement', label:'Preis Komplementärgut (Popcorn & Getränk)', sprite:'puzzle',
+        min:2, max:10, step:0.5, basis:6, einheit:'€', k:-0.025,
+        hilfe:'Zum Kinobesuch gehört für viele Popcorn und ein Getränk.' },
+      { key:'substitut', label:'Preis Substitutionsgut (Streaming je Monat)', sprite:'tausch',
+        min:5, max:25, step:1, basis:12, einheit:'€', k:0.014,
+        hilfe:'Streaming zu Hause ersetzt für viele den Kinobesuch.' },
+      P_GESCHMACK, P_ERWARTUNG,
+    ] },
+
   { key:'eauto', name:'Elektroautos', kurz:'E-Autos', emoji:'🚗', sprite:'eauto',
     qUnit:'Stück', gutTyp:'normales Gut', komp:'Ladestrom', subst:'Benziner',
     prices:[25000,30000,36000,40000], quantities:[20000,30000,36000],
@@ -284,102 +344,211 @@ const simulierterMarkt = (sc, basis, werte) => ({
    ohne externe Bilddateien.
    ============================================================ */
 const SPRITES = {
-  /* ---------- Produkte (16 × 16) ---------- */
-  smartphone: { pal:{ a:'#1E293B', b:'#475569', c:'#7DD3FC', d:'#94A3B8' }, r:[
-    '................','.....aaaaaa.....','....abbbbbba....','....abccccba....',
-    '....abccccba....','....abccccba....','....abccccba....','....abccccba....',
-    '....abccccba....','....abccccba....','....abccccba....','....abbbbbba....',
-    '....abddddba....','....abbbbbba....','.....aaaaaa.....','................'] },
-  kaffee: { pal:{ a:'#E2E8F0', c:'#78350F', e:'#CBD5E1', g:'#E2E8F0', f:'#94A3B8' }, r:[
-    '................','......e..e......','.......e..e.....','......e..e......',
-    '................','..aaaaaaaaaa....','..acccccccca.gg.','..acccccccca.g.g',
-    '..acccccccca.g.g','..aaaaaaaaaa.gg.','..aaaaaaaaaagg..','...aaaaaaaa.....',
-    '....aaaaaa......','................','.ffffffffffff...','..ffffffffff....'] },
-  fahrrad: { pal:{ o:'#1E293B', b:'#2563EB', d:'#7C4A21', a:'#334155' }, r:[
-    '................','................','............a...','.......dd...a...',
-    '......d.....a...','.....bbbbbbba...','....b..b...ba...','...b...b..b.....',
-    '..ooo..b.ooo....','.o...o.b.o...o..','.o...o.b.o...o..','.o...o.b.o...o..',
-    '..ooo....ooo....','................','................','................'] },
-  schokolade: { pal:{ g:'#C0A17A', a:'#7C4A21', b:'#5A3216' }, r:[
-    '................','..gggggggggg....','..gaaaaaaaag....','..gabbabbaag....',
-    '..gabbabbaag....','..gaaaaaaaag....','..gabbabbaag....','..gabbabbaag....',
-    '..gaaaaaaaag....','..gabbabbaag....','..gabbabbaag....','..gaaaaaaaag....',
-    '..gggggggggg....','................','................','................'] },
-  kopfhoerer: { pal:{ a:'#334155', b:'#2563EB' }, r:[
-    '................','.....aaaaaa.....','...aa......aa...','..a..........a..',
-    '..a..........a..','.bbb........bbb.','bbbbb......bbbbb','bbbbb......bbbbb',
-    'bbbbb......bbbbb','bbbbb......bbbbb','.bbb........bbb.','................',
-    '................','................','................','................'] },
-  wohnung: { pal:{ d:'#B91C1C', a:'#E7D3A9', b:'#38BDF8', c:'#7C4A21' }, r:[
-    '................','.......dd.......','......dddd......','.....dddddd.....',
-    '....dddddddd....','...dddddddddd...','..dddddddddddd..','...aaaaaaaaaa...',
-    '...abbaabbaaa...','...abbaabbaaa...','...aaaaaaaaaa...','...abbaabbaaa...',
-    '...abbaabbaaa...','...aaaacccaaa...','...aaaacccaaa...','................'] },
-  pizza: { pal:{ a:'#F59E0B', b:'#DC2626', c:'#C0873A' }, r:[
-    '................','................','.......aa.......','......aaaa......',
-    '.....aabaaa.....','.....aaaabaa....','....aabaaaaaa...','....aaaaabaaa...',
-    '...aabaaaaaaaa..','...aaaaabaaaaa..','..cccccccccccc..','..cccccccccccc..',
-    '................','................','................','................'] },
-  sneaker: { pal:{ a:'#F8FAFC', b:'#2563EB', c:'#334155' }, r:[
-    '................','................','................','.....aaa........',
-    '....aabba.......','....abbbaa......','....abbbbaa.....','....abbbbbaa....',
-    '....abbbbbbaa...','...aabbbbbbbaa..','...abbbbbbbbba..','...aaaaaaaaaaa..',
-    '..ccccccccccccc.','..ccccccccccccc.','................','................'] },
-  eauto: { pal:{ a:'#22C55E', b:'#BAE6FD', o:'#1E293B', e:'#FDE047' }, r:[
-    '................','................','................','.....aaaaaa.....',
-    '....abbbbbba....','...aabbbbbbaa...','..aaaaaaaaaaaa..','.aaaaaaaaaaaaaa.',
-    '.aaaaaaeeaaaaaa.','.aaaaaaaaaaaaaa.','..ooo......ooo..','..ooo......ooo..',
-    '................','................','................','................'] },
-
-  /* ---------- Symbole für Regler und Kopfzeile (8 × 8) ---------- */
-  muenze: { pal:{ o:'#B45309', y:'#FBBF24' }, r:[
-    '..oooo..','.oyyyyo.','oyyooyyo','oyoyyoyo','oyoyyoyo','oyyooyyo','.oyyyyo.','..oooo..'] },
-  geld: { pal:{ g:'#16A34A', o:'#BBF7D0' }, r:[
-    '........','gggggggg','g......g','g.oooo.g','g.oooo.g','g......g','gggggggg','........'] },
-  kette: { pal:{ o:'#0891B2' }, r:[
-    '........','.oo..oo.','o..oo..o','o..oo..o','o..oo..o','o..oo..o','.oo..oo.','........'] },
-  tausch: { pal:{ a:'#7C3AED' }, r:[
-    '........','..a.....','.aaaaaa.','..a.....','.....a..','.aaaaaa.','.....a..','........'] },
-  herz: { pal:{ h:'#EF4444' }, r:[
-    '........','.hh..hh.','hhhhhhhh','hhhhhhhh','.hhhhhh.','..hhhh..','...hh...','........'] },
-  trend: { pal:{ t:'#2563EB' }, r:[
-    '........','......tt','......tt','....tttt','....tttt','..tttttt','..tttttt','........'] },
-  stern: { pal:{ s:'#FBBF24' }, r:[
-    '...ss...','...ss...','.ssssss.','ssssssss','.ssssss.','..ssss..','.ss..ss.','........'] },
-  pokal: { pal:{ p:'#D97706' }, r:[
-    '.pppppp.','.pppppp.','p.pppp.p','p.pppp.p','..pppp..','...pp...','..pppp..','.pppppp.'] },
-  zahnrad: { pal:{ z:'#64748B' }, r:[
-    '..z..z..','.zzzzzz.','.zz..zz.','zz....zz','zz....zz','.zz..zz.','.zzzzzz.','..z..z..'] },
-  diagramm: { pal:{ d:'#2563EB' }, r:[
-    '........','.....dd.','.....dd.','...dddd.','...dddd.','.dddddd.','.dddddd.','........'] },
-
-  /* ---------- Marktwelt ---------- */
+  smartphone: { pal:{ a:'#0F172A', b:'#334155', c:'#1E3A8A', d:'#F87171', e:'#4ADE80', f:'#FBBF24', g:'#60A5FA', h:'#C084FC', i:'#F472B6', n:'#94A3B8' }, r:[
+    '....................','.....aaaaaaaaaa.....','....abbbbbbbbbba....','....abbbbbbbbbba....',
+    '....abccccccccba....','....abddceecffba....','....abddceecffba....','....abccccccccba....',
+    '....abggchhciiba....','....abggchhciiba....','....abccccccccba....','....abggcddceeba....',
+    '....abggcddceeba....','....abccccccccba....','....abccccccccba....','....abbbbbbbbbba....',
+    '....abbbnnnnbbba....','....abbbbbbbbbba....','.....aaaaaaaaaa.....','....................'] },
+  kaffee: { pal:{ o:'#8496AB', w:'#F8FAFC', c:'#5B3A1A', s:'#CBD5E1', g:'#B6C2D1' }, r:[
+    '......s..s..s.......','.....s..s..s........','......s..s..s.......','.....s..s..s........',
+    '....................','...ooooooooooo......','...occcccccccoooo...','...occcccccccoo.oo..',
+    '...occccccccco...oo.','...owwwwwwwwwo....o.','...owwwwwwwwwo...oo.','...owwwwwwwwwoo.oo..',
+    '...owwwwwwwwwoooo...','...owwwwwwwwwo......','...owwwwwwwwwo......','...ooooooooooo......',
+    '....................','..gggggggggggggg....','..gggggggggggggg....','....................'] },
+  fahrrad: { pal:{ o:'#1E293B', r:'#DC2626', g:'#7C2D12', h:'#475569' }, r:[
+    '....................','....................','....................','............hhhhh...',
+    '.......gggg..h......','.......gggg.rr......','.........rrr.r......','........r.r...r.....',
+    '........r..r..r.....','...ooo.r....r.roo...','.ooo.oro....ror.ooo.','.o...r.o....orr...o.',
+    'oo...r.oo..oo.rr..oo','o...rrrrrrrrrrrr...o','oo.....oo..oo.....oo','.o.....o....o.....o.',
+    '.ooo.ooo....ooo.ooo.','...ooo........ooo...','....................','....................'] },
+  wohnung: { pal:{ d:'#B91C1C', a:'#F1E3C6', b:'#38BDF8', c:'#7C4A21', g:'#16A34A', o:'#92400E' }, r:[
+    '....................','.........d..........','........ddd.........','.......ddddd........',
+    '......ddddddd.......','.....dddddddddd.....','....dddddddddddd....','...dddddddddddddd...',
+    '.ddoooooooooooooodd.','...aaaaaaaaaaaaaa...','...aabbbbaabbbbaa...','...aabbbbaabbbbaa...',
+    '...aabbbbaabbbbaa...','...aaaaaaaaaaaaaa...','...aaaaaccccaaaaa...','...aaaaaccccaaaaa...',
+    '...aaaaaccccaaaaa...','...aaaaaccccaaaaa...','gggggggggggggggggggg','gggggggggggggggggggg'] },
+  schokolade: { pal:{ p:'#E11D48', a:'#7C4A21', b:'#5A3216', w:'#F8FAFC' }, r:[
+    '....................','....................','....................','..pppppppppppppppp..',
+    '..pwwwwwwwwwwwwwwp..','..pwaaabaaabaaaawp..','..pwaaabaaabaaaawp..','..pwbbbbbbbbbbbbwp..',
+    '..pwaaabaaabaaaawp..','..pwaaabaaabaaaawp..','..pwbbbbbbbbbbbbwp..','..pwaaabaaabaaaawp..',
+    '..pwaaabaaabaaaawp..','..pwbbbbbbbbbbbbwp..','..pwaaabaaabaaaawp..','..pwwwwwwwwwwwwwwp..',
+    '..pppppppppppppppp..','....................','....................','....................'] },
+  konsole: { pal:{ a:'#1E293B', b:'#475569', c:'#94A3B8', d:'#38BDF8', e:'#EF4444', f:'#22C55E' }, r:[
+    '....................','....................','....................','....................',
+    '....................','....................','..aaaaaaaaaaaaaaaa..','.abbbbbbbbbbbbbbbba.',
+    '.abbbcbbaaaabbbbbba.','.abbcccbbbbbbdbbbba.','.abbcccbbbbcbbbebba.','.abbbcbbbbbbbfbbbba.',
+    '.abbbbbbccccbbbbbba.','.abbbbbbccccbbbbbba.','.abbbbbbbbbbbbbbbba.','..aaaaaaaaaaaaaaaa..',
+    '....................','....................','....................','....................'] },
+  kleidung: { pal:{ h:'#94A3B8', t:'#2563EB', s:'#1D4ED8' }, r:[
+    '.........h..........','........h.h.........','.........h..........','.........h..........',
+    '....hhhhhhhhhhh.....','...h...........h....','..ttt.........ttt...','.ttttt.......ttttt..',
+    '.ttttttt...ttttttt..','.tttttttsssttttttt..','.ttttttttttttttttt..','...ttttttttttttt....',
+    '....ttttttttttt.....','....ttttttttttt.....','....ttttttttttt.....','....ttttttttttt.....',
+    '....ttttttttttt.....','....sssssssssss.....','....................','....................'] },
+  kinoticket: { pal:{ r:'#DC2626', d:'#B91C1C', w:'#FEE2E2', a:'#7F1D1D' }, r:[
+    '....................','....................','....................','....................',
+    '..aaaaaaaaaaaaaaaa..','.arrrrrrrrrrrrrrrra.','.arrrwwwwwwwwwwrrra.','.arrrwddddddddwrrra.',
+    '..rrrwddddddddwrrr..','.arrrwddddddddwrrra.','.arrrwwwwwwwwwwrrra.','.arrrrrrrrrrrrrrrra.',
+    '..aaaaaaaaaaaaaaaa..','....................','....................','....................',
+    '....................','....................','....................','....................'] },
+  kopfhoerer: { pal:{ a:'#334155', b:'#2563EB', c:'#1E3A8A' }, r:[
+    '....................','....................','.......aaaaa........','.....aaaaaaaaa......',
+    '....aaaa...aaaa.....','...aaa.......aaa....','..aaa.........aaa...','..aa...........aa...',
+    '.aaa...........aaa..','..bbb.........bbb...','.bcccb.......bcccb..','.bcccb.......bcccb..',
+    '.bcccb.......bcccb..','.bcccb.......bcccb..','.bcccb.......bcccb..','.bcccb.......bcccb..',
+    '.bcccbaa...aabcccb..','..bbb.aaaaaaa.bbb...','.......aaaaa........','....................'] },
+  pizza: { pal:{ a:'#F59E0B', b:'#DC2626', c:'#C0873A', d:'#FDE68A' }, r:[
+    '....................','.........a..........','.........a..........','........aaa.........',
+    '........aaa.........','.......abbba........','.......abbba........','......aabbbaa.......',
+    '......aadaaaa.......','.....aaaaaadaa......','.....bbbaaabbba.....','....abbbaaabbba.....',
+    '....abbbbbbbbbaa....','...aaaadbbbaaaaa....','...aaaaabbbaaaaaa...','.cccccccccccccccccc.',
+    '.cccccccccccccccccc.','.cccccccccccccccccc.','....................','....................'] },
+  sneaker: { pal:{ a:'#1D4ED8', b:'#3B82F6', w:'#F8FAFC', c:'#E2E8F0', d:'#334155' }, r:[
+    '....................','....................','....................','....................',
+    '....................','................aaa.','...............abbba','..............abbbba',
+    '.......aaa....abbbba','......awwwaa..abbbba','.....awwwwwwaaabbbba','....awwwwwwwwwbbbbba',
+    '...abbbwwwwwwwbbbbba','..abbbbbwwwwwbbbbbba','.abbbbbbbbbbbbbbbbba','.aaaaaaaaaaaaaaaaaaa',
+    '.ccccccccccccccccccc','..ddddddddddddddddd.','....................','....................'] },
+  eauto: { pal:{ a:'#16A34A', b:'#BAE6FD', o:'#1E293B', e:'#FDE047', c:'#15803D' }, r:[
+    '....................','....................','....................','....................',
+    '....................','....................','....aaaaaaaaaaaa....','....abbbbabbbbba....',
+    '....abbbbabbbbba....','..aaaaaaaaaaaaaaaa..','.aaaaaaaaeaaaaaaaaa.','.aaaaaaaeaaaaaaaaaa.',
+    '.aaaoooaeeeaaoooaaa.','.aaoobooaaeaoobooaa.','..cobbboceccobbboc..','...ooboo....ooboo...',
+    '....ooo......ooo....','....................','....................','....................'] },
+  haushalte: { pal:{ d:'#B91C1C', a:'#F1E3C6', b:'#38BDF8', c:'#7C4A21', g:'#16A34A', h:'#1F2937', f:'#F1C398', k:'#2563EB', m:'#DB2777' }, r:[
+    '....................','......d.............','.....ddd............','....ddddd...........',
+    '...ddddddd..........','..ddddddddd.........','.ddddddddddd..hhh...','daaaaaaaaaaad.fff...',
+    '.aaaaaaaaaaa..fff...','.aabbbaaaaaa.kkkkk..','.aabbbacccaa.kkkkkff','.aabbbacccaa.kkkkkff',
+    '.aaaaaacccaa.kkkkmmm','.aaaaaacccaa.kkkkmmm','.aaaaaacccaa.kkkkmmm','gggggggggggggghhhmmm',
+    'gggggggggggggghhhghh','gggggggggggggghhhghh','gggggggggggggghhhghh','gggggggggggggggggggg'] },
+  unternehmen: { pal:{ a:'#64748B', b:'#475569', c:'#94A3B8', d:'#38BDF8', s:'#CBD5E1' }, r:[
+    '...s...s............','....s...s...........','....s...s...........','...bbb.bbb..........',
+    '...bbb.bbb..........','...bbb.bbb..........','...bbb.bbb..........','...bbb.bbb..........',
+    '...bbb.bbb..........','.cccccccccccccccccc.','.aaaaaaaaaaaaaaaaaa.','.aadddadddadddaddda.',
+    '.aadddadddadddaddda.','.aadddadddadddaddda.','.aaaaaaaaaaaaaaaaaa.','.aadddadddadddaddda.',
+    '.aadddadddadddaddda.','.aadddadddadddaddda.','.aaaaaaaaaaaaaaaaaa.','....................'] },
+  staat: { pal:{ a:'#E2E8F0', b:'#94A3B8', c:'#CBD5E1', d:'#64748B' }, r:[
+    '....................','.........a..........','........aaaa........','......aaabaaaa......',
+    '....aaabbbbbaaaa....','..aaabbbbbbbbbaaaa..','acccccccccccccccccca','.cccccccccccccccccc.',
+    '...daa.daa.daa.daa..','...daa.daa.daa.daa..','...daa.daa.daa.daa..','...daa.daa.daa.daa..',
+    '...daa.daa.daa.daa..','...daa.daa.daa.daa..','...daa.daa.daa.daa..','...daa.daa.daa.daa..',
+    'cccccccccccccccccccc','cccccccccccccccccccc','dddddddddddddddddddd','....................'] },
+  banken: { pal:{ a:'#E2E8F0', c:'#CBD5E1', d:'#64748B', y:'#FBBF24', o:'#B45309' }, r:[
+    '....................','....................','.........a..........','........aaa.........',
+    '......aaaaaaa.......','.....aaaaaaaaa......','...aaaaaaaaaaaaa....','.ccccccccccccccccc..',
+    '.ccccccccccccccccc..','...daa.daa.daa.o....','...daa.daa.daooyoo..','...daa.daa.doyoooyo.',
+    '...daa.daa.doyyoyyo.','...daa.daa.oyyoooyyo','...daa.daa.doyyoyyo.','...daa.daa.doyyoyyo.',
+    'cccccccccccccooyoocc','cccccccccccccccocccc','dddddddddddddddddddd','....................'] },
+  ausland: { pal:{ b:'#2563EB', g:'#22C55E', w:'#BAE6FD', d:'#1D4ED8' }, r:[
+    '....................','.......ddwdd........','.....dddbwbddd......','....ddbbbwbgggd.....',
+    '...dbgbbbwgggggd....','..ddgggbbwgggggdd...','..dgggggbwgggggbd...','.ddbgggbbwbgggbbdd..',
+    '.dbbbgbbbwbbbbbbbd..','.wwwwwwwwwwwwwwwww..','.dbbbbbbbwbbgggbbd..','.ddbgggbbwbgggggdd..',
+    '..dbgggbbwbgggggd...','..ddgggbbwbgggggd...','...dbbbbbwbbgggd....','....ddbbbwbbbdd.....',
+    '.....dddbwbddd......','.......ddwdd........','....................','....................'] },
+  finanzmaerkte: { pal:{ a:'#1E293B', b:'#0F172A', g:'#22C55E', r:'#EF4444', c:'#64748B' }, r:[
+    '....................','....................','..aaaaaaaaaaaaaaga..','.abbbbbbbbbbbgbbgga.',
+    '.abbbbbbbbbbbggbgga.','.abbbbbgbbbbbggbgga.','.abbbbbggbrbbggbgga.','.abbrbbggbrrbggbgga.',
+    '.abbrrbggbrrbggbgga.','.abbrrbggbrrbggbgba.','.abbrrbggbrrbgbbbba.','.abbrrbggbrrbbbbbba.',
+    '.abbrrbgbbrrbbbbbba.','.abbrbbbbbrbbbbbbba.','..aaaaaaaaaaaaaaaa..','........cccc........',
+    '........cccc........','.....cccccccccc.....','.....cccccccccc.....','....................'] },
+  muenze: { pal:{ o:'#B45309', y:'#FBBF24', d:'#92400E' }, r:[
+    '..........','..oodddo..','.oodyyyoo.','.dddddyyo.',
+    '.oyyyyyyo.','.dddddyyo.','.oydyyyyo.','.ooydddoo.',
+    '..oooooo..','..........'] },
+  aktentasche: { pal:{ a:'#92400E', b:'#B45309', c:'#FBBF24' }, r:[
+    '..........','...aaaa...','...aaaa...','aaaaaaaaaa',
+    'bbbbbbbbbb','bbbbccbbbb','aaaaccaaaa','bbbbccbbbb',
+    'bbbbbbbbbb','bbbbbbbbbb'] },
+  puzzle: { pal:{ p:'#3B82F6', d:'#1D4ED8' }, r:[
+    '...pp.....','..pppp....','dddddddd..','pppppppp..',
+    'ppppppppp.','pppppppppp','pppppppppp','ppppppppp.',
+    'pppppppp..','dddddddd..'] },
+  tausch: { pal:{ a:'#22C55E', b:'#16A34A' }, r:[
+    '......a...','......aa..','aaaaaaaaa.','aaaaaaaaa.',
+    '...b..aa..','..bb..a...','.bbbbbbbbb','.bbbbbbbbb',
+    '..bb......','...b......'] },
+  herz: { pal:{ h:'#EF4444', d:'#B91C1C' }, r:[
+    '..........','..dhh.hd..','.hhhhhhhh.','.hhhhhhhh.',
+    'hhhhhhhhhh','.hhhhhhhh.','..hhhhhh..','...hhhh...',
+    '....hh....','..........'] },
+  trend: { pal:{ t:'#2563EB', g:'#22C55E' }, r:[
+    't.........','t......ggg','t.......gg','t......g.g',
+    't......g..','t..g..g...','t.g.gg....','tg........',
+    't.........','tttttttttt'] },
+  kurveN: { pal:{ b:'#2563EB', a:'#CBD5E1' }, r:[
+    'a.........','ab........','abb.......','a.bb......',
+    'a..bbb....','a...b.b...','a....bbb..','a......bb.',
+    'a.......bb','aaaaaaaaab'] },
+  kurveA: { pal:{ r:'#EF4444', a:'#CBD5E1' }, r:[
+    'a.........','a........r','a.......rr','a......rr.',
+    'a....rrr..','a...r.r...','a..rrr....','a.rr......',
+    'arr.......','araaaaaaaa'] },
+  paket: { pal:{ a:'#92400E', b:'#C08552', c:'#FBBF24' }, r:[
+    '..........','..........','aaaaccaaaa','bbbbccbbbb',
+    'bbbbccbbbb','aaaaaaaaaa','bbbbccbbbb','bbbbccbbbb',
+    'bbbbccbbbb','aaaaccaaaa'] },
+  flaecheGruen: { pal:{ a:'#16A34A', b:'#86EFAC' }, r:[
+    'a.........','aa........','aba.......','abba......',
+    'abbba.....','abbbba....','abbbbba...','abbbbbba..',
+    'abbbbbbba.','aaaaaaaaaa'] },
+  flaecheRot: { pal:{ a:'#DC2626', b:'#FCA5A5' }, r:[
+    'a.........','a.........','aa........','aba.......',
+    'abba......','abbba.....','abbbba....','abbbbba...',
+    'abbbbbba..','aaaaaaaaaa'] },
+  punkt: { pal:{ o:'#78350F', y:'#FACC15' }, r:[
+    '..........','...oooo...','..oyyyyo..','.oyyyyyyo.',
+    '.oyyyyyyo.','.oyyyyyyo.','.oyyyyyyo.','..oyyyyo..',
+    '...oooo...','..........'] },
+  stern: { pal:{ s:'#FBBF24', d:'#D97706' }, r:[
+    '....ss....','...sdds...','...ssss...','ssssssssss',
+    '.ssssssss.','..ssssss..','..ssssss..','.sss..sss.',
+    '.ss....ss.','..........'] },
+  pokal: { pal:{ p:'#F59E0B', d:'#B45309' }, r:[
+    '..pppppp..','ddppppppdd','ddppppppdd','ddppppppdd',
+    '..pppppp..','...pppp...','...pddp...','....dd....',
+    '..dddddd..','..dddddd..'] },
+  zahnrad: { pal:{ z:'#64748B', d:'#475569' }, r:[
+    '....dd....','..zzddzz..','.zzzzzzzz.','.zzz..zzz.',
+    'ddz....zdd','ddz....zdd','.zzz..zzz.','.zzzzzzzz.',
+    '..zzddzz..','....dd....'] },
+  diagramm: { pal:{ d:'#2563EB', b:'#60A5FA' }, r:[
+    'd.........','d.....bb..','d.....bb..','d.....bb..',
+    'd...ddbb..','d...ddbb..','d.bbddbb..','d.bbddbb..',
+    'd.bbddbb..','dddddddddd'] },
+  geld: { pal:{ g:'#16A34A', o:'#BBF7D0', d:'#15803D' }, r:[
+    '..........','..........','dddddddddd','gggggggggg',
+    'gggooooggg','gggooooggg','gggooooggg','gggggggggg',
+    'dddddddddd','..........'] },
   person: { pal:{ h:'#3F2A14', f:'#F1C398', c:'#2563EB', p:'#334155', s:'#1E293B' }, r:[
-    '..hhhh..','.hhhhhh.','.hffffh.','.ffffff.','..cccc..','.cccccc.',
-    'cccccccc','.cccccc.','..cccc..','..pp.pp.','..pp.pp.','..ss.ss.'] },
+    '..hhhh..','.hhhhhh.','.hffffh.','.ffffff.',
+    '..cccc..','.cccccc.','cccccccc','.cccccc.',
+    '..cccc..','..pp.pp.','..pp.pp.','..ss.ss.'] },
   stand: { pal:{ a:'#DC2626', b:'#F8FAFC', w:'#7C4A21', c:'#A16207', g:'#22C55E' }, r:[
-    '........................','..aaaaaaaaaaaaaaaaaaaa..','..abbaabbaabbaabbaabba..',
-    '..abbaabbaabbaabbaabba..','..aaaaaaaaaaaaaaaaaaaa..','..w..................w..',
-    '..w..................w..','..w..ggg.....ggg.....w..','..w.ggggg...ggggg....w..',
-    '..wccccccccccccccccccw..','..wccccccccccccccccccw..','..w..................w..',
+    '........................','..aaaaaaaaaaaaaaaaaaaa..','..abbaabbaabbaabbaabba..','..abbaabbaabbaabbaabba..',
+    '..aaaaaaaaaaaaaaaaaaaa..','..w..................w..','..w..................w..','..w..ggg.....ggg.....w..',
+    '..w.ggggg...ggggg....w..','..wccccccccccccccccccw..','..wccccccccccccccccccw..','..w..................w..',
     '..w..................w..','........................'] },
   kiste: { pal:{ a:'#7C4A21', b:'#A97142' }, r:[
-    'aaaaaaaa','abbbbbba','ab.bb.ba','abbbbbba','aaaaaaaa','abbbbbba','abbbbbba','aaaaaaaa'] },
+    'aaaaaaaa','abbbbbba','ab.bb.ba','abbbbbba',
+    'aaaaaaaa','abbbbbba','abbbbbba','aaaaaaaa'] },
   baum: { pal:{ g:'#16A34A', t:'#7C4A21' }, r:[
-    '....gggg....','...gggggg...','..gggggggg..','.gggggggggg.','.gggggggggg.',
-    '..gggggggg..','...gggggg...','....gggg....','.....tt.....','.....tt.....',
-    '.....tt.....','....tttt....','............','............'] },
+    '....gggg....','...gggggg...','..gggggggg..','.gggggggggg.',
+    '.gggggggggg.','..gggggggg..','...gggggg...','....gggg....',
+    '.....tt.....','.....tt.....','.....tt.....','....tttt....',
+    '............','............'] },
   haus: { pal:{ d:'#B45309', a:'#E7D3A9', b:'#38BDF8', c:'#7C4A21' }, r:[
-    '..............','......dd......','.....dddd.....','....dddddd....','...dddddddd...',
-    '..dddddddddd..','.dddddddddddd.','..aaaaaaaaaa..','..abbaaabbaa..','..abbaaabbaa..',
-    '..aaaaaaaaaa..','..abbaacccaa..','..abbaacccaa..','..aaaaacccaa..','..aaaaacccaa..',
-    '..............'] },
+    '..............','......dd......','.....dddd.....','....dddddd....',
+    '...dddddddd...','..dddddddddd..','.dddddddddddd.','..aaaaaaaaaa..',
+    '..abbaaabbaa..','..abbaaabbaa..','..aaaaaaaaaa..','..abbaacccaa..',
+    '..abbaacccaa..','..aaaaacccaa..','..aaaaacccaa..','..............'] },
   lkw: { pal:{ a:'#F1F5F9', b:'#2563EB', c:'#BAE6FD', o:'#1E293B' }, r:[
     '....................','.....aaaaaaaaaaaaa..','.....aaaaaaaaaaaaa..','..bbbaaaaaaaaaaaaa..',
     '.bcccbaaaaaaaaaaaa..','.bcccbaaaaaaaaaaaa..','.bbbbbaaaaaaaaaaaa..','.bbbbbaaaaaaaaaaaa..',
     '..ooo........ooo....','..ooo........ooo....','....................','....................'] },
   wolke: { pal:{ w:'#FFFFFF' }, r:[
-    '...ww.......','..wwww..ww..','.wwwwwwwwww.','wwwwwwwwwwww','.wwwwwwwwww.','............'] },
+    '...ww.......','..wwww..ww..','.wwwwwwwwww.','wwwwwwwwwwww',
+    '.wwwwwwwwww.','............'] },
 };
 
 // Waagrechte Läufe gleicher Farbe zu einem Rechteck zusammenfassen
@@ -1308,11 +1477,11 @@ function Aufgabenkarte({ task, nr, gesamt, answers, setAnswer, attempt, result, 
         <div className="flex gap-2 pt-1">
           {!fertig
             ? <button onClick={onPruefen}
-                className="flex-1 py-3 rounded-xl bg-blue-600 active:bg-blue-700 text-white font-bold text-sm shadow-sm">
+                className="knopf flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm">
                 {attempt === 0 ? 'Lösung prüfen' : 'Nochmal prüfen'}
               </button>
             : <button onClick={onWeiter}
-                className="flex-1 py-3 rounded-xl bg-green-600 active:bg-green-700 text-white font-bold text-sm shadow-sm">
+                className="knopf flex-1 py-3 rounded-xl bg-green-600 text-white font-bold text-sm">
                 {nr === gesamt ? 'Runde abschließen 🏁' : 'Nächste Aufgabe →'}
               </button>}
         </div>
@@ -1995,7 +2164,7 @@ function SpielPanel({ g, onMC, onPruefeMC, onWeiter, onPreis, onSchaetzung, onVe
             <p className="text-[11px] text-blue-700 mt-1">Richtig gerechnet gibt es 10 Bonusmünzen. Leer lassen ist auch erlaubt.</p>
           </div>
 
-          <button onClick={onVerkaufen} className="mt-3 w-full py-3 rounded-xl bg-green-600 text-white font-bold text-sm">
+          <button onClick={onVerkaufen} className="knopf mt-3 w-full py-3 rounded-xl bg-green-600 text-white font-bold text-sm">
             Preis festlegen & verkaufen 🛒
           </button>
         </Card>
@@ -2043,7 +2212,7 @@ function SpielPanel({ g, onMC, onPruefeMC, onWeiter, onPreis, onSchaetzung, onVe
             <div className="text-center text-[12.5px] font-bold text-amber-700">+{e.muenzen} 🪙 in dieser Runde</div>
           )}
 
-          <button onClick={onNaechste} className="mt-1 w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-sm">
+          <button onClick={onNaechste} className="knopf mt-1 w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-sm">
             {g.runde >= SPIEL_RUNDEN ? 'Zur Abrechnung 🏁' : 'Nächste Runde →'}
           </button>
         </Card>
@@ -2162,19 +2331,101 @@ function Fortschritt({ p, onReset, onName }) {
 /* ============================================================
    13. OBERFLÄCHE – Bausteine
    ============================================================ */
-const PAR_SPRITE = { preis:'muenze', einkommen:'geld', komplement:'kette',
+const PAR_SPRITE = { preis:'muenze', einkommen:'aktentasche', komplement:'puzzle',
                      substitut:'tausch', geschmack:'herz', erwartung:'trend' };
 
-const Block = ({ nr, titel, right, children, className = '', innen = 'p-3' }) => (
-  <section data-block={nr || titel} className={`bg-white border border-[#DBE7F3] rounded-xl shadow-sm ${className}`}>
-    <header className="flex items-center gap-2 px-3 py-2 border-b border-[#EAF1F8]">
-      {nr && <span className="w-5 h-5 rounded bg-blue-600 text-white text-[11px] font-bold flex items-center justify-center shrink-0">{nr}</span>}
-      <h2 className="pixel text-[11.5px] font-bold uppercase tracking-wider text-slate-700 flex-1 truncate">{titel}</h2>
-      {right}
-    </header>
+const Block = ({ nr, titel, farbe = 'b-blau', children, className = '', innen = 'px-3 pb-3 pt-5' }) => (
+  <section data-block={nr || titel} className={`relative karte ${className}`}>
+    <h2 className={`banner ${farbe}`}>
+      {nr && <span className="nr">{nr}</span>}{titel}
+    </h2>
     <div className={innen}>{children}</div>
   </section>
 );
+
+/* ---------- Marktteilnehmer und Legende ---------- */
+const TEILNEHMER = [
+  { sprite:'haushalte',     name:'Haushalte',     text:'Konsumieren Güter und Dienstleistungen.' },
+  { sprite:'unternehmen',   name:'Unternehmen',   text:'Produzieren Güter und bieten Arbeitsplätze.' },
+  { sprite:'staat',         name:'Staat',         text:'Setzt Regeln und erhebt Steuern.' },
+  { sprite:'banken',        name:'Banken',        text:'Vergeben Kredite und fördern Investitionen.' },
+  { sprite:'ausland',       name:'Ausland',       text:'Handel mit anderen Ländern (Importe und Exporte).' },
+  { sprite:'finanzmaerkte', name:'Finanzmärkte',  text:'Bestimmen Zinsen und beeinflussen Investitionen.' },
+];
+
+const Marktteilnehmer = () => (
+  <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+    {TEILNEHMER.map(t => (
+      <div key={t.sprite} className="rounded-lg bg-[#FBF8F1] border border-[#EAE2D2] p-1.5 text-center">
+        <div className="flex justify-center"><Pixel name={t.sprite} size={2.2} title={t.name} /></div>
+        <div className="text-[11px] font-bold text-slate-700 leading-tight mt-1 break-words">{t.name}</div>
+        <div className="text-[9.5px] text-slate-500 leading-snug mt-0.5">{t.text}</div>
+      </div>
+    ))}
+  </div>
+);
+
+const LEGENDE = [
+  { sprite:'flaecheGruen', name:'Konsumentenrente', text:'Zusätzlicher Nutzen der Konsumenten.' },
+  { sprite:'flaecheRot',   name:'Produzentenrente', text:'Zusätzlicher Gewinn der Produzenten.' },
+  { sprite:'punkt',        name:'Gleichgewicht',    text:'Punkt, an dem Angebot und Nachfrage übereinstimmen.' },
+  { sprite:'kurveN',       name:'Nachfragekurve',   text:'Fällt: Bei höherem Preis wird weniger nachgefragt.' },
+  { sprite:'kurveA',       name:'Angebotskurve',    text:'Steigt: Bei höherem Preis wird mehr angeboten.' },
+];
+
+const Legende = () => (
+  <div className="space-y-1.5">
+    {LEGENDE.map(l => (
+      <div key={l.sprite} className="flex items-start gap-2">
+        <span className="shrink-0 mt-0.5"><Pixel name={l.sprite} size={1.9} /></span>
+        <span className="leading-tight">
+          <span className="text-[11.5px] font-bold text-slate-700">{l.name}</span><br />
+          <span className="text-[10.5px] text-slate-500">{l.text}</span>
+        </span>
+      </div>
+    ))}
+  </div>
+);
+
+/* ---------- Ergebnisraster unter dem Diagramm ---------- */
+function ErgebnisRaster({ sc, markt, preis }) {
+  const k = marktKennzahlen(markt);
+  const n = Math.max(0, qd(markt, preis)), a = Math.max(0, qs(markt, preis));
+  const diff = a - n;
+  const felder = [
+    { s:'muenze', l:'Gleichgewichtspreis', v:geld(k.P, sc),               f:'text-amber-600' },
+    { s:'paket',  l:'Gleichgewichtsmenge', v:`${fmt(k.Q)} ${sc.qUnit}`,   f:'text-amber-600' },
+    { s:'kurveN', l:`Nachfrage bei ${geld(preis, sc)}`, v:`${fmt(n)} ${sc.qUnit}`, f:'text-blue-600' },
+    { s:'kurveA', l:`Angebot bei ${geld(preis, sc)}`,   v:`${fmt(a)} ${sc.qUnit}`, f:'text-red-600' },
+    { s:'flaecheGruen', l:'Konsumentenrente', v:geld(k.KR, sc),           f:'text-green-700' },
+    { s:'flaecheRot',   l:'Produzentenrente', v:geld(k.PR, sc),           f:'text-red-600' },
+  ];
+  return (
+    <div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {felder.map(x => (
+          <div key={x.l} className="flex items-center gap-2 rounded-lg bg-[#FBF8F1] border border-[#EAE2D2] px-2 py-1.5">
+            <span className="shrink-0"><Pixel name={x.s} size={2} /></span>
+            <span className="min-w-0">
+              <span className="block text-[10px] text-slate-500 leading-tight">{x.l}</span>
+              <span className={`block text-[13px] font-bold num-input leading-tight ${x.f}`}>{x.v}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+        <span>Gesamtwohlfahrt <b className="num-input text-slate-700">{geld(k.W, sc)}</b></span>
+        <span>Prohibitivpreis <b className="num-input text-slate-700">{geld(k.pMaxD, sc)}</b></span>
+        <span>Mindestangebotspreis <b className="num-input text-slate-700">{geld(k.pMinS, sc)}</b></span>
+        <span className={Math.abs(diff) < 0.5 ? 'text-green-600' : 'text-purple-700'}>
+          {Math.abs(diff) < 0.5 ? 'Markt geräumt' : diff > 0
+            ? <>Angebotsüberschuss <b className="num-input">{fmt(diff)}</b></>
+            : <>Nachfrageüberschuss <b className="num-input">{fmt(-diff)}</b></>}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 /* ---------- 1 · Markt wählen ---------- */
 function Marktwahl({ scKey, onWahl }) {
@@ -2186,10 +2437,11 @@ function Marktwahl({ scKey, onWahl }) {
           const aktiv = s.key === scKey;
           return (
             <button key={s.key} onClick={() => onWahl(s.key)}
-              className={`relative rounded-lg border-2 p-1.5 flex flex-col items-center gap-1 transition ${aktiv
-                ? 'border-amber-400 bg-amber-50 shadow-inner' : 'border-slate-200 bg-slate-50 hover:border-blue-300'}`}>
+              className={`produktkarte relative rounded-lg border-2 p-1.5 flex flex-col items-center gap-1 ${aktiv
+                ? 'border-amber-400 bg-amber-50 shadow-inner' : 'border-[#EAE2D2] bg-[#FBF8F1] hover:border-blue-300'}`}>
+
               {aktiv && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-green-500 text-white text-[9px] flex items-center justify-center">✓</span>}
-              <Pixel name={s.sprite} size={2.4} title={s.name} />
+              <Pixel name={s.sprite} size={2.2} title={s.name} />
               <span className="text-[10px] font-semibold text-slate-700 leading-none text-center">{s.kurz}</span>
             </button>
           );
@@ -2246,7 +2498,7 @@ function ParameterPanel({ sc, werte, setWert, pMax, onReset }) {
       })}
 
       <button onClick={onReset}
-        className="mt-2 w-full py-2 rounded-lg border border-slate-300 text-[12px] font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-1.5">
+        className="knopf mt-2 w-full py-2 rounded-lg border-2 border-slate-300 bg-white text-[12px] font-semibold text-slate-600 flex items-center justify-center gap-1.5">
         ⟳ Zurücksetzen
       </button>
     </div>
@@ -2294,7 +2546,7 @@ function MissionPanel({ mission, ctx, onAntwort, onPruefen, onWeiter, onTipp, on
         <div className="text-4xl mb-1">{punkte >= max * 0.8 ? '🏆' : '💪'}</div>
         <div className="text-lg font-bold text-slate-800">{punkte} von {max} Punkten</div>
         <p className="text-[12.5px] text-slate-500 mt-1">Mission abgeschlossen. Wähle ein anderes Gut oder starte eine neue Mission.</p>
-        <button onClick={onNeu} className="mt-3 w-full py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[13px]">
+        <button onClick={onNeu} className="knopf mt-3 w-full py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[13px]">
           🔁 Neue Mission
         </button>
       </div>
@@ -2436,16 +2688,16 @@ function MissionPanel({ mission, ctx, onAntwort, onPruefen, onWeiter, onTipp, on
         {!erledigt ? (
           <>
             <button onClick={onPruefen}
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 active:bg-blue-700 text-white font-bold text-[13px]">
+              className="knopf flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[13px]">
               Lösung prüfen
             </button>
             {schritt.tipp && !mission.tippAn && (
-              <button onClick={onTipp} className="px-3 rounded-xl border-2 border-amber-300 text-amber-700 font-bold text-[13px]">💡</button>
+              <button onClick={onTipp} className="knopf px-3 rounded-xl border-2 border-amber-300 bg-amber-50 text-amber-700 font-bold text-[13px]">💡</button>
             )}
           </>
         ) : (
           <button onClick={onWeiter}
-            className="flex-1 py-2.5 rounded-xl bg-green-600 active:bg-green-700 text-white font-bold text-[13px]">
+            className="knopf flex-1 py-2.5 rounded-xl bg-green-600 text-white font-bold text-[13px]">
             {mission.schritt + 1 < auf.schritte.length ? 'Weiter →'
               : mission.aktiv + 1 < n ? 'Nächste Aufgabe →' : 'Mission abschließen 🏆'}
           </button>
@@ -2638,7 +2890,7 @@ function ErgebnisPanel({ mission, verlauf, onSpeichern, sc }) {
           </div>
         ))}
         <button onClick={onSpeichern}
-          className="shrink-0 w-[128px] rounded-lg border-2 border-dashed border-slate-300 text-slate-500 text-[12px] font-semibold hover:border-blue-400 hover:text-blue-600 flex flex-col items-center justify-center gap-1 py-4">
+          className="knopf shrink-0 w-[128px] rounded-lg bg-violet-600 text-white text-[12px] font-bold uppercase tracking-wide flex flex-col items-center justify-center gap-1 py-4">
           <span className="text-xl leading-none">+</span>Speichern
         </button>
       </div>
@@ -2887,53 +3139,65 @@ function App() {
 
       <main className="max-w-[1600px] mx-auto px-2 sm:px-3 py-3">
         {ansicht === 'simulator' && (
-          <div className="grid gap-3 grid-cols-1 lg:grid-cols-12 items-start">
-            <Block nr="1" titel="Markt wählen" className="order-1 lg:order-none lg:col-span-2">
-              <Marktwahl scKey={scKey} onWahl={produktWechsel} />
-            </Block>
+          <div className="grid gap-5 grid-cols-1 lg:grid-cols-12 items-start">
+            <div className="contents lg:flex lg:flex-col lg:gap-5 lg:col-span-3 lg:col-start-1 lg:row-start-1">
+              <Block nr="1" titel="Produkt auswählen" farbe="b-blau" className="order-1 lg:order-none">
+                <Marktwahl scKey={scKey} onWahl={produktWechsel} />
+              </Block>
+              <Block titel="Marktteilnehmer" farbe="b-gruen" className="order-9 lg:order-none">
+                <Marktteilnehmer />
+              </Block>
+            </div>
 
-            <Block nr="2" titel="Parameter festlegen" className="order-4 lg:order-none lg:col-span-3">
-              <ParameterPanel sc={sc} werte={werte} setWert={setWert} pMax={pMax} onReset={reglerReset} />
-            </Block>
-
-            <Block nr="3" titel={`Markt für ${sc.name}`} className="order-3 lg:order-none lg:col-span-7">
-              <div className="grid gap-3 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_216px]">
-                <MarktChart m={simMarkt} sc={sc} kompakt={kompakt} showSurplus showEq verschiebung
-                            compare={verschoben ? basis : undefined} priceLine={werte.preis} gapLabel />
-                <div className="space-y-2">
-                  <div className="rounded-lg border border-[#DBE7F3] p-2">
-                    <div className="cap mb-1">Aktuelle Marktlage</div>
-                    <Marktlage sc={sc} markt={simMarkt} preis={werte.preis} />
-                  </div>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 flex gap-2">
-                    <div className="text-[11px] text-amber-900 leading-snug flex-1">
-                      <div className="font-bold mb-0.5">TIPP</div>
-                      {verschoben
-                        ? 'Die gestrichelte Kurve zeigt die Ausgangslage. Ein Nichtpreisfaktor hat die ganze Nachfragekurve verschoben.'
-                        : 'Bewege die Regler und beobachte, wie sich der Markt verändert. Löse danach die Aufgaben rechts.'}
-                    </div>
-                    <span className="text-2xl leading-none">🧑‍🏫</span>
-                  </div>
-                </div>
+            <Block nr="3" titel="Nachfrage-Angebot-Visualisierung" farbe="b-lila"
+              className="order-3 lg:order-none lg:col-span-6 lg:col-start-4 lg:row-start-1">
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Pixel name={sc.sprite} size={1.7} />
+                <span className="pixel text-[13px] sm:text-[15px] font-bold text-slate-700">Markt für {sc.name}</span>
+              </div>
+              <MarktChart m={simMarkt} sc={sc} kompakt={kompakt} showSurplus showEq verschiebung
+                          compare={verschoben ? basis : undefined} priceLine={werte.preis} gapLabel />
+              <div className="mt-3 pt-3 border-t border-dashed border-slate-200">
+                <div className="cap mb-2">Aktuelle Ergebnisse</div>
+                <ErgebnisRaster sc={sc} markt={simMarkt} preis={werte.preis} />
               </div>
             </Block>
 
-            <Block titel="Die Marktwelt" className="order-5 lg:order-none lg:col-span-8" innen="p-2">
+            <div className="contents lg:flex lg:flex-col lg:gap-5 lg:col-span-3 lg:col-start-10 lg:row-start-1">
+            <Block nr="2" titel="Parameter ändern" farbe="b-blau" className="order-4 lg:order-none">
+              <ParameterPanel sc={sc} werte={werte} setWert={setWert} pMax={pMax} onReset={reglerReset} />
+              <div className="mt-2 pt-2 border-t border-dashed border-slate-200">
+                <Maskottchen figur="🧑‍🏫" text={verschoben
+                  ? 'Die gestrichelte Kurve zeigt die Ausgangslage. Ein Nichtpreisfaktor hat die ganze Nachfragekurve verschoben.'
+                  : 'Bewege die Regler und beobachte, wie sich der Markt verändert. Löse danach die Aufgaben.'} />
+              </div>
+            </Block>
+
+            <Block titel="Legende" farbe="b-lila" className="order-8 lg:order-none">
+              <Legende />
+            </Block>
+            </div>
+
+            <Block titel="Die Marktwelt" farbe="b-gelb" innen="px-2 pb-2 pt-5"
+              className="order-5 lg:order-none lg:col-span-8 lg:col-start-1 lg:row-start-2">
               <Marktwelt sc={sc} basis={basis} markt={simMarkt} preis={werte.preis} />
             </Block>
 
-            <Block nr="4" titel="Aufgaben" className="order-2 lg:order-none lg:col-span-4">
+            <Block nr="4" titel="Aufgaben" farbe="b-gruen"
+              className="order-2 lg:order-none lg:col-span-4 lg:col-start-9 lg:row-start-2">
               <MissionPanel mission={mission} ctx={{ sc, simMarkt, werte }}
                 onAntwort={missionAntwort} onPruefen={missionPruefen} onWeiter={missionWeiter}
                 onTipp={() => setMission(mi => ({ ...mi, tippAn: true }))} onNeu={neueMission} />
             </Block>
 
-            <Block nr="5" titel="Tiefer gehen – analysiere den Markt" className="order-6 lg:order-none lg:col-span-8">
+            <Block nr="5" titel="Tiefer gehen – analysiere den Markt" farbe="b-tuerkis"
+              className="order-6 lg:order-none lg:col-span-8 lg:col-start-1 lg:row-start-3">
               <AnalysePanel sc={sc} basis={basis} werte={werte} setWert={setWert}
                 tab={analyseTab} setTab={setAnalyseTab} geloest={geloest} pMax={pMax} />
             </Block>
 
-            <Block nr="6" titel="Deine Ergebnisse" className="order-7 lg:order-none lg:col-span-4">
+            <Block nr="6" titel="Deine Ergebnisse" farbe="b-gelb"
+              className="order-7 lg:order-none lg:col-span-4 lg:col-start-9 lg:row-start-3">
               <ErgebnisPanel mission={mission} verlauf={p.verlauf || []} onSpeichern={speichern} sc={sc} />
             </Block>
           </div>
@@ -2991,7 +3255,7 @@ function App() {
                     <div className="text-center py-3">
                       <div className="text-4xl mb-1">{erg.filter(e => e === 'ok' || e === 'ok2').length >= 4 ? '🏆' : '💪'}</div>
                       <div className="text-lg font-bold">{erg.filter(e => e === 'ok' || e === 'ok2').length} von {RUNDE_LAENGE} richtig</div>
-                      <button onClick={() => neueRunde(stufe)} className="mt-3 px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[13px]">
+                      <button onClick={() => neueRunde(stufe)} className="knopf mt-3 px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[13px]">
                         🔁 Neue Runde
                       </button>
                     </div>
@@ -3039,7 +3303,7 @@ function App() {
                     Ereignisse verändern Nachfrage, Kosten und den Preis deines Mitbewerbers.
                   </p>
                   {p.spielBest > 0 && <p className="text-[12px] text-amber-700 font-semibold mt-2">🏅 Rekord: {eur(p.spielBest, 0)}</p>}
-                  <button onClick={() => spielStarten(null)} className="mt-3 px-6 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm">
+                  <button onClick={() => spielStarten(null)} className="knopf mt-3 px-6 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm">
                     ▶️ Partie starten
                   </button>
                 </div>
@@ -3070,7 +3334,7 @@ function App() {
                 Fortschritt zurücksetzen
               </button>
               <button onClick={() => setAnsicht('simulator')}
-                className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white font-bold text-[13px]">Zurück zum Simulator</button>
+                className="knopf mt-2 w-full py-2 rounded-lg bg-blue-600 text-white font-bold text-[13px]">Zurück zum Simulator</button>
             </Block>
             <Block titel="Über dieses Lernspiel">
               <p className="text-[12.5px] text-slate-600 leading-relaxed">
