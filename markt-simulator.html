@@ -439,7 +439,7 @@ function useKompakt() {
   return k;
 }
 
-function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points, gapLabel, sc, titel, kompakt }) {
+function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points, gapLabel, sc, titel, kompakt, linien, rechteck }) {
   const W = kompakt ? 440 : 640, H = kompakt ? 350 : 430;
   const pad = kompakt ? { l: 54, r: 28, t: 26, b: 48 } : { l: 68, r: 34, t: 30, b: 58 };
   const FS = kompakt ? 14 : 12, FSL = kompakt ? 15 : 13;
@@ -541,13 +541,43 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
           </g>
         )}
 
+        {/* Gewinnrechteck (Spielmodus) */}
+        {rechteck && rechteck.q > 0 && (
+          <g className="drawin">
+            <rect x={X(0)} y={Y(Math.max(rechteck.pVon, rechteck.pBis))}
+                  width={Math.max(0, X(rechteck.q) - X(0))}
+                  height={Math.max(0, Y(Math.min(rechteck.pVon, rechteck.pBis)) - Y(Math.max(rechteck.pVon, rechteck.pBis)))}
+                  fill={rechteck.farbe || '#22C55E'} fillOpacity="0.28"
+                  stroke={rechteck.farbe || '#22C55E'} strokeWidth="1.5" strokeDasharray="4 3" />
+            {rechteck.label && (() => {
+              const mittig = X(rechteck.q) - X(0) > iw * 0.3;
+              return (
+                <text x={mittig ? X(rechteck.q / 2) : X(rechteck.q) + 8}
+                      y={Y((rechteck.pVon + rechteck.pBis) / 2) + 4}
+                      fontSize={FSL} fontWeight="800" textAnchor={mittig ? 'middle' : 'start'}
+                      fill="#15803D">{rechteck.label}</text>
+              );
+            })()}
+          </g>
+        )}
+
+        {/* waagrechte Bezugslinien (eigener Preis, Konkurrenzpreis) */}
+        {(linien || []).map((l, i) => (
+          <g key={'ln'+i}>
+            <line x1={pad.l} x2={pad.l+iw} y1={Y(l.p)} y2={Y(l.p)} stroke={l.farbe} strokeWidth="2.5"
+                  strokeDasharray={l.gestrichelt ? '8 4' : undefined} />
+            <text x={pad.l + iw - 2 - iw * 0.30 * (i % 3)} y={Y(l.p) - 6}
+                  fontSize={FSL} fontWeight="700" textAnchor="end" fill={l.farbe}>{l.label}</text>
+          </g>
+        ))}
+
         {/* zusätzliche Punkte (z. B. Elastizität) */}
         {(points || []).map((pt, i) => (
           <g key={'pt'+i}>
             <line x1={X(pt.q)} y1={Y(pt.p)} x2={X(pt.q)} y2={Y(0)} stroke={pt.color} strokeWidth="1.4" strokeDasharray="4 4" />
             <line x1={X(pt.q)} y1={Y(pt.p)} x2={X(0)} y2={Y(pt.p)} stroke={pt.color} strokeWidth="1.4" strokeDasharray="4 4" />
             <circle cx={X(pt.q)} cy={Y(pt.p)} r="7" fill={pt.color} stroke="#fff" strokeWidth="2" />
-            <text x={X(pt.q)+11} y={Y(pt.p)-9} fontSize={FSL} fontWeight="800" fill={pt.color}>{pt.label}</text>
+            <text x={X(pt.q)+11} y={Y(pt.p) + (pt.unten ? 18 : -9)} fontSize={FSL} fontWeight="800" fill={pt.color}>{pt.label}</text>
           </g>
         ))}
 
@@ -585,7 +615,8 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
    ============================================================ */
 const STORE_KEY = 'marktsim_v1';
 const leerStats = () => ({ 1:{t:0,ok:0}, 2:{t:0,ok:0}, 3:{t:0,ok:0}, 4:{t:0,ok:0}, 5:{t:0,ok:0} });
-const DEFAULT_PROGRESS = { name:'', coins:0, xp:0, totalT:0, totalOk:0, streak:0, bestStreak:0, stats:leerStats() };
+const DEFAULT_PROGRESS = { name:'', coins:0, xp:0, totalT:0, totalOk:0, streak:0, bestStreak:0,
+  spielPartien:0, spielBest:0, stats:leerStats() };
 
 function loadProgress() {
   try {
@@ -911,6 +942,24 @@ const THEORIE = [
       <p>Unelastisch reagieren typischerweise lebensnotwendige Güter ohne Ersatz (Medikamente, Benzin, Grundnahrungsmittel),
          elastisch dagegen Luxusgüter und Güter mit vielen Substituten.</p>
     </div>) },
+  { t:'Im Marktabenteuer: Gewinn richtig rechnen', e:'🏪', body:(
+    <div className="space-y-2">
+      <p>Im Spielmodus führst du ein Unternehmen. Dein Ergebnis hängt an zwei Größen, die du selbst steuerst:
+         dem <b>Preis</b> und der daraus folgenden <b>Absatzmenge</b>.</p>
+      <p className="font-mono bg-slate-50 border border-slate-200 rounded p-2">
+        Umsatz = Preis · Absatz<br />
+        variable Kosten = Stückkosten · Absatz<br />
+        Deckungsbeitrag = Umsatz − variable Kosten = (Preis − Stückkosten) · Absatz<br />
+        Gewinn = Deckungsbeitrag − Fixkosten
+      </p>
+      <p>Der <b>Deckungsbeitrag</b> ist das, was nach Abzug der variablen Kosten übrig bleibt, um die Fixkosten zu decken.
+         Erst wenn er die Fixkosten übersteigt, entsteht Gewinn.</p>
+      <p><b>Der Zielkonflikt:</b> Ein hoher Preis bringt viel Marge je Stück, kostet aber Absatz – teils weil die
+         Marktnachfrage sinkt, teils weil Kunden zum günstigeren Mitbewerber wechseln. Ein niedriger Preis bringt
+         Menge, aber kaum Marge. Der gewinnmaximale Preis liegt dazwischen, meist deutlich unter dem Prohibitivpreis.</p>
+      <p>Genau das ist die <b>Preiselastizität</b> aus Stufe 5 in Aktion: Reagiert die Menge stark auf den Preis,
+         ist eine Preiserhöhung gefährlich; reagiert sie schwach, lohnt sie sich.</p>
+    </div>) },
   { t:'Rechenweg-Spickzettel', e:'🧮', body:(
     <div className="space-y-2 font-mono text-[12.5px]">
       <p>1. Gleichsetzen:  a − b·P = c + d·P</p>
@@ -945,8 +994,428 @@ function Theorie() {
   );
 }
 
+
 /* ============================================================
-   11. FORTSCHRITT
+   11. SPIELMODUS – "MARKTABENTEUER"
+   Die Schülerin/der Schüler führt ein Unternehmen über 8 Runden:
+   Situationskarte → Marktwirkung einschätzen → eigenen Preis setzen
+   → Gewinn selbst ausrechnen → Ergebnis und Vergleich mit dem Optimum.
+   ============================================================ */
+const SPIEL_RUNDEN = 8;
+const SPIEL_SZENARIEN = SCENARIOS.filter(s => s.prices[0] >= 40);
+
+const F_NACHFRAGE = { frage:'Wie wirkt sich das auf die Marktnachfrage aus?', optionen:[
+  'Die Nachfrage steigt bei jedem Preis – die Kurve wandert nach rechts.',
+  'Die Nachfrage sinkt bei jedem Preis – die Kurve wandert nach links.',
+  'An der Nachfrage ändert sich nichts.'] };
+const F_KOSTEN = { frage:'Wie wirkt sich das auf deine Kosten und das Marktangebot aus?', optionen:[
+  'Die Stückkosten steigen, das Angebot wandert nach links.',
+  'Die Stückkosten sinken, das Angebot wandert nach rechts.',
+  'Kosten und Angebot bleiben unverändert.'] };
+const F_KONKURRENZ = { frage:'Was passiert mit deinem Absatz, wenn du deinen Preis unverändert lässt?', optionen:[
+  'Mein Absatz sinkt – Kunden wandern zur Konkurrenz ab.',
+  'Mein Absatz steigt – ich bin jetzt vergleichsweise günstiger.',
+  'Mein Absatz bleibt unverändert.'] };
+const F_KAPAZITAET = { frage:'Was bedeutet das für diese Runde?', optionen:[
+  'Ich kann höchstens die genannte Menge verkaufen, auch wenn mehr nachgefragt wird.',
+  'Meine Stückkosten sinken.',
+  'Die Marktnachfrage steigt.'] };
+
+const SPIEL_EREIGNISSE = [
+  { id:'trend', emoji:'🔥', titel:'Trend in den sozialen Medien', art:'nachfrage', vz:1, staerke:0.18, richtig:0,
+    text:sc => `Ein Video über ${sc.name} geht viral. Auf einmal wollen bei jedem Preis deutlich mehr Leute kaufen.`,
+    erklaerung:'Geänderte Präferenzen verschieben die gesamte Nachfragekurve nach rechts.', ...F_NACHFRAGE },
+  { id:'rezession', emoji:'📉', titel:'Die Konjunktur schwächelt', art:'nachfrage', vz:-1, staerke:0.15, richtig:1,
+    text:() => 'Die Wirtschaft kühlt ab, die Haushalte halten ihr Geld zusammen und sparen bei größeren Anschaffungen.',
+    erklaerung:'Bei einem normalen Gut senkt ein niedrigeres Einkommen die Nachfrage bei jedem Preis.', ...F_NACHFRAGE },
+  { id:'komp', emoji:'🔗', titel:'Ergänzungsgut wird teurer', art:'nachfrage', vz:-1, staerke:0.13, richtig:1,
+    text:sc => `Der Preis für ${sc.komp} steigt kräftig. Das Gut wird zusammen mit deinem Produkt genutzt.`,
+    erklaerung:'Wird das Komplementärgut teurer, wird das Gesamtpaket teurer – die Nachfrage nach deinem Produkt sinkt.', ...F_NACHFRAGE },
+  { id:'subst', emoji:'🔁', titel:'Ersatzgut wird teurer', art:'nachfrage', vz:1, staerke:0.15, richtig:0,
+    text:sc => `Der Preis für ${sc.subst} zieht stark an – für viele Kunden ist das die Alternative zu deinem Produkt.`,
+    erklaerung:'Wird das Substitutionsgut teurer, weichen Kunden auf dein Produkt aus – deine Nachfrage steigt.', ...F_NACHFRAGE },
+  { id:'test', emoji:'🏆', titel:'Testsieger!', art:'nachfrage', vz:1, staerke:0.16, richtig:0,
+    text:sc => `Eine bekannte Verbraucherzeitschrift kürt deine ${sc.name} zum Testsieger.`,
+    erklaerung:'Ein besseres Image erhöht die Zahlungsbereitschaft – die Nachfragekurve wandert nach rechts.', ...F_NACHFRAGE },
+  { id:'presse', emoji:'📰', titel:'Schlechte Schlagzeilen', art:'nachfrage', vz:-1, staerke:0.16, richtig:1,
+    text:sc => `Ein Bericht wirft der Branche Qualitätsmängel vor. ${sc.name} stehen plötzlich in der Kritik.`,
+    erklaerung:'Verschlechterte Präferenzen senken die Nachfrage bei jedem Preis.', ...F_NACHFRAGE },
+  { id:'rohstoff', emoji:'🏭', titel:'Rohstoffe werden teurer', art:'kosten', vz:1, staerke:0.14, richtig:0,
+    text:() => 'Die Einkaufspreise für Material und Energie schießen nach oben. Jedes produzierte Stück kostet dich mehr.',
+    erklaerung:'Höhere Stückkosten verschieben die Angebotskurve nach oben bzw. links.', ...F_KOSTEN },
+  { id:'technik', emoji:'⚙️', titel:'Neue Fertigungsanlage', art:'kosten', vz:-1, staerke:0.13, richtig:1,
+    text:() => 'Eine neue, teilautomatisierte Anlage läuft an und senkt deine Kosten je Stück spürbar.',
+    erklaerung:'Sinkende Stückkosten verschieben die Angebotskurve nach unten bzw. rechts.', ...F_KOSTEN },
+  { id:'steuer', emoji:'🏛️', titel:'Neue Stücksteuer', art:'kosten', vz:1, staerke:0.12, richtig:0,
+    text:sc => `Der Staat führt eine Abgabe je verkaufter Einheit ${sc.name} ein.`,
+    erklaerung:'Eine Stücksteuer wirkt wie eine Kostenerhöhung – das Angebot wandert nach links.', ...F_KOSTEN },
+  { id:'subvention', emoji:'💶', titel:'Förderprogramm', art:'kosten', vz:-1, staerke:0.12, richtig:1,
+    text:() => 'Der Staat fördert die Branche mit einem Zuschuss je verkaufter Einheit.',
+    erklaerung:'Eine Subvention senkt die effektiven Kosten – das Angebot wandert nach rechts.', ...F_KOSTEN },
+  { id:'preiskampf', emoji:'⚔️', titel:'Die Konkurrenz greift an', art:'konkurrenz', vz:-1, staerke:0.12, richtig:0,
+    text:() => 'Dein größter Mitbewerber senkt seinen Preis deutlich und wirbt offensiv um deine Kunden.',
+    erklaerung:'Wird der Konkurrent günstiger, verlierst du bei unverändertem Preis Marktanteile.', ...F_KONKURRENZ },
+  { id:'konkTeuer', emoji:'💸', titel:'Die Konkurrenz wird teurer', art:'konkurrenz', vz:1, staerke:0.12, richtig:1,
+    text:() => 'Dein Mitbewerber hebt die Preise an, weil seine Kosten gestiegen sind.',
+    erklaerung:'Ist der Konkurrent teurer, wirkst du im Vergleich günstiger und gewinnst Marktanteile.', ...F_KONKURRENZ },
+  { id:'neuerAnbieter', emoji:'🏬', titel:'Neuer Anbieter im Markt', art:'konkurrenz', vz:-1, staerke:0.10, angebotRechts:true, richtig:0,
+    text:sc => `Ein Anbieter aus dem Ausland drängt mit günstigen ${sc.name} in den Markt.`,
+    erklaerung:'Mehr Anbieter drücken das Preisniveau – bei unverändertem Preis sinkt dein Absatz.', ...F_KONKURRENZ },
+  { id:'konkLiefer', emoji:'🚧', titel:'Konkurrent hat Lieferprobleme', art:'konkurrenz', vz:1, staerke:0.14, richtig:1,
+    text:() => 'Beim Mitbewerber stockt die Produktion. Er kann kaum liefern und hebt den Preis an.',
+    erklaerung:'Der Konkurrent wird teurer – deine relative Position verbessert sich.', ...F_KONKURRENZ },
+  { id:'engpass', emoji:'📦', titel:'Eigener Lieferengpass', art:'kapazitaet', richtig:0,
+    text:() => 'Ein Zulieferer fällt aus. Diese Runde kannst du nur eine begrenzte Menge produzieren.',
+    erklaerung:'Die Kapazitätsgrenze begrenzt deinen Absatz – mehr als diese Menge kannst du nicht verkaufen.', ...F_KAPAZITAET },
+];
+
+const preisSchritt = (pMax) => {
+  const roh = pMax / 60, mag = Math.pow(10, Math.floor(Math.log10(roh))), n = roh / mag;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+};
+
+const marktAnteil = (eigen, konkurrenz) => clamp(0.5 + 2 * (konkurrenz - eigen) / konkurrenz, 0.05, 0.95);
+
+function absatzBei(g, preis) {
+  const roh = Math.max(0, qd(g.markt, preis)) * marktAnteil(preis, g.konkurrenz);
+  const menge = Math.round(roh);
+  return g.kapazitaet != null ? Math.min(menge, g.kapazitaet) : menge;
+}
+const gewinnBei = (g, preis) => (preis - g.stueckkosten) * absatzBei(g, preis) - g.fixkosten;
+
+function besterPreis(g) {
+  const max = prohibitiv(g.markt), schritt = Math.max(0.5, preisSchritt(max) / 4);
+  let best = { preis: g.stueckkosten, gewinn: -Infinity };
+  for (let p = g.stueckkosten; p <= max; p += schritt) {
+    const w = gewinnBei(g, p);
+    if (w > best.gewinn) best = { preis: p, gewinn: w };
+  }
+  return best;
+}
+
+// Für das Spiel braucht es Luft zwischen Stückkosten und Prohibitivpreis,
+// sonst ist nach ein paar negativen Ereignissen kein Gewinn mehr möglich.
+function spielMarkt(sc) {
+  let letzter = null;
+  for (let i = 0; i < 60; i++) {
+    const m = makeMarket(sc), k = marktKennzahlen(m);
+    if (k.pMinS >= 1 && k.pMinS <= 0.45 * k.pMaxD) return m;
+    letzter = m;
+  }
+  return letzter;
+}
+
+function neuesSpiel(scKey) {
+  const sc = scKey ? scById(scKey) : pick(SPIEL_SZENARIEN);
+  const m = spielMarkt(sc), k = marktKennzahlen(m);
+  const g = {
+    sc, markt:{ a:m.a, b:m.b, c:m.c, d:m.d }, marktVorher:null,
+    stueckkosten: k.pMinS, startKosten: k.pMinS, startA: m.a,
+    fixkosten: Math.round(0.18 * (k.P - k.pMinS) * k.Q),
+    konkurrenz: k.P, kapazitaet: null,
+    runde: 1, phase: 'karte', konto: 0, sterneGesamt: 0,
+    ereignis: null, mcAntwort: null, mcGeprueft: false,
+    preis: k.P, schaetzung: '', ergebnis: null, verlauf: [], letzteIds: [],
+  };
+  ziehEreignis(g);
+  return g;
+}
+
+function ereignisAnwenden(g, ev) {
+  if (ev.art === 'nachfrage') {
+    g.markt.a = Math.round(g.markt.a * (1 + ev.vz * ev.staerke));
+  } else if (ev.art === 'kosten') {
+    const delta = ev.vz * Math.max(1, Math.round(g.stueckkosten * ev.staerke));
+    g.stueckkosten = Math.max(1, g.stueckkosten + delta);
+    g.markt.c = g.markt.c - g.markt.d * delta;      // Kostenänderung verschiebt die Angebotskurve
+  } else if (ev.art === 'konkurrenz') {
+    g.konkurrenz = Math.round(g.konkurrenz * (1 + ev.vz * ev.staerke));
+    if (ev.angebotRechts) g.markt.c = Math.round(g.markt.c + g.markt.d * Math.max(1, g.stueckkosten * 0.08));
+  } else if (ev.art === 'kapazitaet') {
+    g.kapazitaet = Math.max(10, Math.round(absatzBei({ ...g, kapazitaet: null }, g.konkurrenz) * 0.6));
+  }
+}
+
+// Damit der Markt über acht Runden nicht ins Unspielbare driftet: Nachfrage,
+// Stückkosten und Konkurrenzpreis bleiben in einem Korridor um die Startwerte.
+function grenzenEinhalten(g) {
+  g.markt.a = clamp(g.markt.a, Math.round(g.startA * 0.72), Math.round(g.startA * 1.6));
+  const pMax = prohibitiv(g.markt);
+  g.stueckkosten = clamp(g.stueckkosten,
+    Math.max(1, Math.round(g.startKosten * 0.55)),
+    Math.min(Math.round(0.55 * pMax), Math.round(g.startKosten * 1.8)));
+  g.konkurrenz = clamp(g.konkurrenz, Math.round(g.stueckkosten * 1.15), Math.round(0.92 * pMax));
+}
+
+function wirkungSpuerbar(g, vor, ev) {
+  if (ev.art === 'nachfrage') return Math.abs(g.markt.a / vor.markt.a - 1) >= 0.04;
+  if (ev.art === 'kosten') return g.stueckkosten !== vor.stueckkosten;
+  if (ev.art === 'konkurrenz') return g.konkurrenz !== vor.konkurrenz;
+  return true;
+}
+
+function ziehEreignis(g) {
+  const vor = { markt: { ...g.markt }, stueckkosten: g.stueckkosten, konkurrenz: g.konkurrenz };
+  const moeglich = SPIEL_EREIGNISSE.filter(e => !g.letzteIds.includes(e.id));
+  const pool = moeglich.length ? moeglich : SPIEL_EREIGNISSE;
+  let ev = null;
+
+  // Ein Ereignis nur nehmen, wenn es spürbar wirkt UND die Runde gewinnbar bleibt
+  for (let versuch = 0; versuch < 8; versuch++) {
+    g.markt = { ...vor.markt }; g.stueckkosten = vor.stueckkosten;
+    g.konkurrenz = vor.konkurrenz; g.kapazitaet = null;
+    ev = pick(pool);
+    ereignisAnwenden(g, ev);
+    grenzenEinhalten(g);
+    if (wirkungSpuerbar(g, vor, ev) && besterPreis(g).gewinn > 0.05 * g.fixkosten) break;
+  }
+
+  g.marktVorher = { ...vor.markt };
+  g.kostenVorher = vor.stueckkosten;
+  g.konkurrenzVorher = vor.konkurrenz;
+  g.letzteIds = [ev.id, ...g.letzteIds].slice(0, 4);
+  g.ereignis = ev;
+  g.mcAntwort = null; g.mcGeprueft = false; g.ergebnis = null; g.schaetzung = '';
+  g.preis = clamp(g.preis, g.stueckkosten, prohibitiv(g.markt));
+}
+
+function ereignisFolge(g) {
+  const ev = g.ereignis;
+  if (!ev) return '';
+  if (ev.art === 'nachfrage') {
+    const pct = Math.round((g.markt.a / g.marktVorher.a - 1) * 100);
+    return `Die nachgefragte Menge liegt jetzt bei jedem Preis um ${Math.abs(pct)} % ${pct > 0 ? 'höher' : 'niedriger'}.`;
+  }
+  if (ev.art === 'kosten') return `Deine Stückkosten ändern sich von ${eur(g.kostenVorher)} auf ${eur(g.stueckkosten)}.`;
+  if (ev.art === 'konkurrenz') return `Der Konkurrenzpreis ändert sich von ${eur(g.konkurrenzVorher)} auf ${eur(g.konkurrenz)}.`;
+  if (ev.art === 'kapazitaet') return `Du kannst diese Runde höchstens ${fmt(g.kapazitaet)} ${g.sc.qUnit} produzieren.`;
+  return '';
+}
+
+const SterneAnzeige = ({ n }) => (
+  <span className="text-amber-500 tracking-tight">{'★'.repeat(n)}<span className="text-slate-300">{'★'.repeat(3 - n)}</span></span>
+);
+
+const Kennzahl = ({ label, wert, farbe = 'text-slate-800' }) => (
+  <div className="rounded-lg bg-slate-50 border border-slate-200 px-2 py-1.5 text-center">
+    <div className={`text-[13px] font-bold num-input ${farbe}`}>{wert}</div>
+    <div className="text-[10px] text-slate-500 leading-tight">{label}</div>
+  </div>
+);
+
+function SpielPanel({ g, onMC, onPruefeMC, onWeiter, onPreis, onSchaetzung, onVerkaufen, onNaechste, onNeu }) {
+  if (!g) return null;
+  const ev = g.ereignis;
+  const max = prohibitiv(g.markt), schritt = preisSchritt(max);
+  const absatz = absatzBei(g, g.preis);
+  const anteil = marktAnteil(g.preis, g.konkurrenz);
+  const e = g.ergebnis;
+  // Vor der Einschätzfrage noch die alten Werte zeigen, sonst steht die Antwort schon da
+  const aufgedeckt = g.phase !== 'karte' || g.mcGeprueft;
+  const zeigKosten = aufgedeckt ? g.stueckkosten : (g.kostenVorher != null ? g.kostenVorher : g.stueckkosten);
+  const zeigKonkurrenz = aufgedeckt ? g.konkurrenz : (g.konkurrenzVorher != null ? g.konkurrenzVorher : g.konkurrenz);
+
+  /* ---- Endabrechnung ---- */
+  if (g.phase === 'ende') {
+    const schnitt = g.sterneGesamt / (SPIEL_RUNDEN * 3);
+    const urteil = schnitt >= 0.8 ? { t:'Herausragend geführt!', e:'🏆' }
+                 : schnitt >= 0.6 ? { t:'Solide Unternehmensführung.', e:'🎖️' }
+                 : schnitt >= 0.35 ? { t:'Ausbaufähig – achte stärker auf die Konkurrenz.', e:'📈' }
+                 : { t:'Da ist noch viel Luft nach oben.', e:'💪' };
+    return (
+      <Card title="Abrechnung">
+        <div className="text-center py-2">
+          <div className="text-5xl mb-1">{urteil.e}</div>
+          <div className={`text-2xl font-bold num-input ${g.konto >= 0 ? 'text-green-700' : 'text-red-600'}`}>{eur(g.konto)}</div>
+          <div className="text-[12px] text-slate-500">Gesamtgewinn nach {SPIEL_RUNDEN} Runden</div>
+          <div className="mt-1 text-[13px] font-semibold text-slate-700">{urteil.t}</div>
+          <div className="mt-1 text-[12px] text-amber-600">{g.sterneGesamt} von {SPIEL_RUNDEN * 3} Sternen</div>
+        </div>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-[11.5px] border-collapse">
+            <thead><tr className="bg-slate-100 text-slate-600">
+              <th className="border p-1 text-left">Runde</th><th className="border p-1 text-left">Ereignis</th>
+              <th className="border p-1 text-right">Preis</th><th className="border p-1 text-right">Absatz</th>
+              <th className="border p-1 text-right">Gewinn</th><th className="border p-1 text-center">★</th>
+            </tr></thead>
+            <tbody>
+              {g.verlauf.map(v => (
+                <tr key={v.runde}>
+                  <td className="border p-1">{v.runde}</td>
+                  <td className="border p-1">{v.emoji} {v.titel}</td>
+                  <td className="border p-1 text-right num-input">{eur(v.preis)}</td>
+                  <td className="border p-1 text-right num-input">{fmt(v.absatz)}</td>
+                  <td className={`border p-1 text-right num-input ${v.gewinn >= 0 ? 'text-green-700' : 'text-red-600'}`}>{eur(v.gewinn)}</td>
+                  <td className="border p-1 text-center">{v.sterne}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <button onClick={onNeu} className="mt-3 w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-sm">🔁 Neue Partie starten</button>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Statusleiste */}
+      <div className="grid grid-cols-4 gap-1.5">
+        <Kennzahl label={`Runde von ${SPIEL_RUNDEN}`} wert={g.runde} />
+        <Kennzahl label="Konto" wert={eur(g.konto, 0)} farbe={g.konto >= 0 ? 'text-green-700' : 'text-red-600'} />
+        <Kennzahl label="Stückkosten" wert={eur(zeigKosten, 0)} farbe="text-red-600" />
+        <Kennzahl label="Konkurrenzpreis" wert={eur(zeigKonkurrenz, 0)} farbe="text-orange-600" />
+      </div>
+
+      {/* Phase 1: Situationskarte + Einschätzung */}
+      {g.phase === 'karte' && (
+        <Card title={`Situation ${g.runde}`}>
+          <div className="flex items-start gap-3 rounded-lg border-2 border-blue-200 bg-blue-50 p-3">
+            <span className="text-3xl leading-none">{ev.emoji}</span>
+            <div>
+              <div className="font-bold text-slate-800 text-[14px]">{ev.titel}</div>
+              <p className="text-[13px] text-slate-700 leading-snug mt-0.5">{ev.text(g.sc)}</p>
+            </div>
+          </div>
+
+          <div className="mt-3 text-[13px] font-semibold text-slate-800">{ev.frage}</div>
+          <div className="space-y-1.5 mt-1.5">
+            {ev.optionen.map((o, i) => {
+              const gewaehlt = g.mcAntwort === i;
+              let stil = 'border-slate-200 bg-white';
+              if (g.mcGeprueft && i === ev.richtig) stil = 'border-green-500 bg-green-50';
+              else if (g.mcGeprueft && gewaehlt) stil = 'border-red-400 bg-red-50';
+              else if (gewaehlt) stil = 'border-blue-500 bg-blue-50 ring-2 ring-blue-200';
+              return (
+                <button key={i} disabled={g.mcGeprueft} onClick={() => onMC(i)}
+                  className={`w-full text-left text-[13px] leading-snug px-3 py-2 rounded-lg border-2 ${stil}`}>
+                  <span className="font-bold mr-1.5">{String.fromCharCode(65 + i)})</span>{o}
+                  {g.mcGeprueft && i === ev.richtig && <span className="ml-1 text-green-700 font-bold">✓</span>}
+                </button>
+              );
+            })}
+          </div>
+
+          {g.mcGeprueft && (
+            <div className="mt-2 space-y-2">
+              <div className={`rounded-lg border-2 px-3 py-2 text-[13px] font-semibold pop ${g.mcAntwort === ev.richtig
+                ? 'border-green-500 bg-green-50 text-green-800' : 'border-red-400 bg-red-50 text-red-800'}`}>
+                {g.mcAntwort === ev.richtig ? '✅ Richtig eingeschätzt! +5 Münzen' : '❌ Nicht ganz.'}
+              </div>
+              <Maskottchen figur="🧑‍🏫" text={<>{ev.erklaerung} <b>{ereignisFolge(g)}</b></>} />
+            </div>
+          )}
+
+          <button onClick={g.mcGeprueft ? onWeiter : onPruefeMC}
+            disabled={!g.mcGeprueft && g.mcAntwort == null}
+            className={`mt-3 w-full py-3 rounded-xl font-bold text-sm text-white ${
+              !g.mcGeprueft && g.mcAntwort == null ? 'bg-slate-300' : g.mcGeprueft ? 'bg-green-600' : 'bg-blue-600'}`}>
+            {g.mcGeprueft ? 'Weiter zur Preisentscheidung →' : 'Einschätzung prüfen'}
+          </button>
+        </Card>
+      )}
+
+      {/* Phase 2: Preis festlegen */}
+      {g.phase === 'preis' && (
+        <Card title={`Deine Entscheidung – Runde ${g.runde}`}>
+          <Maskottchen figur="🧑‍💼" text={<>Lege deinen Verkaufspreis fest. Je weiter du über dem Konkurrenzpreis von <b>{eur(g.konkurrenz)}</b> liegst, desto mehr Kunden verlierst du – zu billig verkaufst du zwar viel, verdienst aber je Stück kaum etwas.</>} />
+
+          <div className="mt-3">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[12.5px] font-semibold text-slate-700">Dein Verkaufspreis</span>
+              <span className="text-[16px] font-bold num-input text-green-700">{eur(g.preis)}</span>
+            </div>
+            <input type="range" className="neutral" min={g.stueckkosten} max={Math.round(max)} step={schritt}
+                   value={g.preis} onChange={ev2 => onPreis(Number(ev2.target.value))} />
+            <div className="flex justify-between text-[10.5px] text-slate-400">
+              <span>Stückkosten {eur(g.stueckkosten, 0)}</span><span>Prohibitivpreis {eur(max, 0)}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5 mt-2">
+            <Kennzahl label="voraussichtl. Absatz" wert={`${fmt(absatz)}`} farbe="text-blue-700" />
+            <Kennzahl label="Marktanteil" wert={`${fmt(anteil * 100, 0)} %`} farbe="text-purple-700" />
+            <Kennzahl label="Fixkosten" wert={eur(g.fixkosten, 0)} farbe="text-red-600" />
+          </div>
+          {g.kapazitaet != null && (
+            <p className="mt-1.5 text-[11.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+              ⚠️ Kapazitätsgrenze diese Runde: höchstens {fmt(g.kapazitaet)} {g.sc.qUnit}.
+            </p>
+          )}
+
+          <div className="mt-3 rounded-lg border-2 border-blue-200 bg-blue-50 p-3">
+            <div className="text-[12.5px] font-semibold text-blue-900">Rechne nach – wie viel Gewinn bringt dieser Preis?</div>
+            <p className="font-mono text-[12px] text-blue-800 mt-1">
+              Gewinn = (Preis − Stückkosten) · Absatz − Fixkosten
+            </p>
+            <div className="flex items-center gap-1.5 mt-2">
+              <input type="text" inputMode="decimal" value={g.schaetzung} placeholder="dein Ergebnis"
+                     onChange={ev2 => onSchaetzung(ev2.target.value)}
+                     className="num-input flex-1 px-2.5 py-2 rounded-lg border-2 border-slate-300 focus:border-blue-500 focus:outline-none text-[15px] font-semibold text-right" />
+              <span className="text-[12px] text-slate-500 w-4">€</span>
+            </div>
+            <p className="text-[11px] text-blue-700 mt-1">Richtig gerechnet gibt es 10 Bonusmünzen. Leer lassen ist auch erlaubt.</p>
+          </div>
+
+          <button onClick={onVerkaufen} className="mt-3 w-full py-3 rounded-xl bg-green-600 text-white font-bold text-sm">
+            Preis festlegen & verkaufen 🛒
+          </button>
+        </Card>
+      )}
+
+      {/* Phase 3: Ergebnis */}
+      {g.phase === 'ergebnis' && e && (
+        <Card title={`Ergebnis Runde ${g.runde}`}>
+          <div className="text-center py-1">
+            <div className="text-3xl">{e.sterne >= 2 ? '🎉' : e.gewinn >= 0 ? '🙂' : '😬'}</div>
+            <div className={`text-xl font-bold num-input ${e.gewinn >= 0 ? 'text-green-700' : 'text-red-600'}`}>{eur(e.gewinn)}</div>
+            <div className="text-[12px] text-slate-500">Gewinn dieser Runde</div>
+            <div className="mt-1"><SterneAnzeige n={e.sterne} /></div>
+          </div>
+
+          <div className="mt-2 text-[12.5px]">
+            {[['Verkaufspreis', eur(e.preis)], ['Absatzmenge', `${fmt(e.absatz)} ${g.sc.qUnit}`],
+              ['Umsatz', eur(e.umsatz)], ['variable Kosten', '− ' + eur(e.varKosten)],
+              ['Deckungsbeitrag', eur(e.db)], ['Fixkosten', '− ' + eur(g.fixkosten)]].map(([l, w], i) => (
+              <div key={i} className="flex justify-between py-1 border-b border-dashed border-slate-200">
+                <span className="text-slate-500">{l}</span><span className="num-input font-semibold">{w}</span>
+              </div>
+            ))}
+            <div className="flex justify-between py-1.5 font-bold">
+              <span>Gewinn</span><span className={`num-input ${e.gewinn >= 0 ? 'text-green-700' : 'text-red-600'}`}>{eur(e.gewinn)}</span>
+            </div>
+          </div>
+
+          {e.schaetzungText && (
+            <div className={`rounded-lg border-2 px-3 py-2 text-[12.5px] font-semibold ${e.schaetzungOk
+              ? 'border-green-500 bg-green-50 text-green-800' : 'border-amber-400 bg-amber-50 text-amber-900'}`}>
+              {e.schaetzungText}
+            </div>
+          )}
+
+          <Maskottchen figur="🧑‍🏫" text={
+            e.sterne === 3
+              ? <>Sehr gut kalkuliert. Der bestmögliche Preis lag bei <b>{eur(e.bestPreis)}</b> mit {eur(e.bestGewinn)} Gewinn – du warst praktisch am Optimum.</>
+              : <>Mit einem Preis von <b>{eur(e.bestPreis)}</b> wären in dieser Runde <b>{eur(e.bestGewinn)}</b> möglich gewesen
+                 ({e.preis > e.bestPreis ? 'dein Preis war zu hoch – zu viele Kunden sind zur Konkurrenz gegangen'
+                   : 'dein Preis war zu niedrig – die Marge je Stück war zu klein'}).</>
+          } />
+
+          {e.muenzen > 0 && (
+            <div className="text-center text-[12.5px] font-bold text-amber-700">+{e.muenzen} 🪙 in dieser Runde</div>
+          )}
+
+          <button onClick={onNaechste} className="mt-1 w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-sm">
+            {g.runde >= SPIEL_RUNDEN ? 'Zur Abrechnung 🏁' : 'Nächste Runde →'}
+          </button>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   12. FORTSCHRITT
    ============================================================ */
 function Fortschritt({ p, onReset, onName }) {
   const lvl = levelOf(p.xp);
@@ -984,6 +1453,12 @@ function Fortschritt({ p, onReset, onName }) {
             <div className="text-[10px] text-orange-600">🔥 beste Serie</div>
           </div>
         </div>
+        {(p.spielPartien || 0) > 0 && (
+          <div className="mt-2 rounded-lg bg-blue-50 border border-blue-200 px-2.5 py-2 flex items-center justify-between">
+            <span className="text-[12px] text-blue-800">🏪 Marktabenteuer · {p.spielPartien} Partien</span>
+            <span className="text-[13px] font-bold num-input text-blue-800">Rekord {eur(p.spielBest || 0, 0)}</span>
+          </div>
+        )}
       </Card>
 
       <Card title="Nach Niveaustufe">
@@ -1040,7 +1515,7 @@ function Fortschritt({ p, onReset, onName }) {
 }
 
 /* ============================================================
-   12. HAUPTKOMPONENTE
+   13. HAUPTKOMPONENTE
    ============================================================ */
 function App() {
   const [p, setP] = useState(loadProgress);
@@ -1096,6 +1571,70 @@ function App() {
   const [tippAn, setTippAn] = useState(false);
   const [chartModus, setChartModus] = useState('sim');
 
+  /* ---- Spielmodus ---- */
+  const [spiel, setSpiel] = useState(null);
+  const spielStarten = (scKey) => { setSpiel(neuesSpiel(scKey)); setTab('spiel'); setChartModus('spiel'); };
+  const spielAendern = (fn) => setSpiel(alt => { const g = { ...alt }; fn(g); return g; });
+
+  // Berechnung bewusst außerhalb der State-Updater: dort dürfen keine Nebeneffekte
+  // (Münzen vergeben, Toast) stehen, weil React Updater mehrfach aufrufen darf.
+  const spielPruefeMC = () => {
+    const g = { ...spiel, mcGeprueft: true };
+    if (g.mcAntwort === g.ereignis.richtig) {
+      setP(pr => ({ ...pr, coins: pr.coins + 5, xp: pr.xp + 5 }));
+      setToast('+5 🪙');
+    }
+    setSpiel(g);
+  };
+
+  const spielVerkaufen = () => {
+    const g = { ...spiel };
+    const absatz = absatzBei(g, g.preis);
+    const umsatz = g.preis * absatz;
+    const varKosten = g.stueckkosten * absatz;
+    const db = umsatz - varKosten;
+    const gewinn = db - g.fixkosten;
+    const best = besterPreis(g);
+    const quote = best.gewinn > 0 ? gewinn / best.gewinn : (gewinn >= 0 ? 1 : 0);
+    const sterne = gewinn <= 0 ? 0 : quote >= 0.9 ? 3 : quote >= 0.7 ? 2 : quote >= 0.45 ? 1 : 0;
+
+    const eingabe = parseNum(g.schaetzung || '');
+    let schaetzungOk = false, schaetzungText = '';
+    if (isFinite(eingabe)) {
+      schaetzungOk = Math.abs(eingabe - gewinn) <= Math.max(50, Math.abs(gewinn) * 0.02);
+      const rechnung = `(${fmt(g.preis, 2)} − ${fmt(g.stueckkosten, 2)}) · ${fmt(absatz)} − ${fmt(g.fixkosten)}`;
+      schaetzungText = schaetzungOk
+        ? `✅ Deine Gewinnrechnung stimmt: ${rechnung} = ${eur(gewinn)}. +10 Münzen`
+        : `Deine Schätzung lag bei ${eur(eingabe)}, richtig wären ${eur(gewinn)}: ${rechnung}.`;
+    }
+
+    const muenzen = sterne * 5 + (schaetzungOk ? 10 : 0);
+    g.ergebnis = { preis: g.preis, absatz, umsatz, varKosten, db, gewinn, sterne,
+                   bestPreis: best.preis, bestGewinn: best.gewinn, schaetzungOk, schaetzungText, muenzen };
+    g.konto = g.konto + gewinn;
+    g.sterneGesamt = g.sterneGesamt + sterne;
+    g.verlauf = [...g.verlauf, { runde: g.runde, emoji: g.ereignis.emoji, titel: g.ereignis.titel,
+                                 preis: g.preis, absatz, gewinn, sterne }];
+    g.phase = 'ergebnis';
+    if (muenzen > 0) { setP(pr => ({ ...pr, coins: pr.coins + muenzen, xp: pr.xp + muenzen })); setToast(`+${muenzen} 🪙`); }
+    setSpiel(g);
+  };
+
+  const spielNaechste = () => {
+    const g = { ...spiel };
+    // Die Konkurrenz reagiert auf die letzte Runde
+    const ziel = g.preis < g.konkurrenz ? g.konkurrenz * 0.94 : g.konkurrenz * 1.04;
+    g.konkurrenz = Math.max(Math.round(g.stueckkosten * 1.1), Math.round(ziel));
+    if (g.runde >= SPIEL_RUNDEN) {
+      g.phase = 'ende';
+      setP(pr => ({ ...pr, spielPartien: (pr.spielPartien || 0) + 1,
+                    spielBest: Math.max(pr.spielBest || 0, Math.round(g.konto)) }));
+    } else {
+      g.runde = g.runde + 1; g.phase = 'karte'; ziehEreignis(g);
+    }
+    setSpiel(g);
+  };
+
   const task = idx < runde.length ? runde[idx] : null;
   const rundeFertig = idx >= runde.length;
   const setAnswer = (k, v) => setAnt(a => ({ ...a, [k]: v }));
@@ -1143,10 +1682,28 @@ function App() {
   };
   const weiter = () => { setIdx(i => i + 1); resetFeld(); };
 
-  useEffect(() => { setChartModus(tab === 'aufgabe' ? 'task' : 'sim'); }, [tab]);
+  useEffect(() => { setChartModus(tab === 'aufgabe' ? 'task' : tab === 'spiel' ? 'spiel' : 'sim'); }, [tab]);
 
   /* ---- Diagramm-Eigenschaften ---- */
   const chartProps = (() => {
+    if (chartModus === 'spiel' && spiel && spiel.phase !== 'ende') {
+      const g = spiel, e = g.ergebnis;
+      const zeigNeu = g.phase !== 'karte' || g.mcGeprueft;
+      const konkLinie = zeigNeu || g.konkurrenzVorher == null ? g.konkurrenz : g.konkurrenzVorher;
+      const linien = [{ p: konkLinie, farbe: '#EA580C', label: 'Konkurrenz', gestrichelt: true }];
+      if (g.phase !== 'karte') linien.push({ p: g.preis, farbe: '#16A34A', label: 'dein Preis' });
+      if (g.phase === 'ergebnis' && e) linien.push({ p: e.bestPreis, farbe: '#64748B', label: 'bester Preis', gestrichelt: true });
+      const menge = g.phase === 'karte' ? null : (e ? e.absatz : absatzBei(g, g.preis));
+      return {
+        m: zeigNeu ? g.markt : g.marktVorher,
+        compare: zeigNeu && g.marktVorher ? g.marktVorher : null,
+        showSurplus: false, showEq: true, sc: g.sc, linien,
+        rechteck: g.phase === 'ergebnis' && e && e.db > 0
+          ? { pVon: g.stueckkosten, pBis: e.preis, q: e.absatz, label: 'Deckungsbeitrag' } : null,
+        points: menge ? [{ p: g.preis, q: menge, label: 'Absatz', color: '#16A34A', unten: true }] : null,
+        titel: `MARKT FÜR ${g.sc.name.toUpperCase()}`,
+      };
+    }
     if (chartModus === 'task' && task) {
       const c = task.chart || {}, fertig = !!(res && res.fertig);
       const zeigNeu = !!task.m2 && fertig;
@@ -1173,7 +1730,7 @@ function App() {
   const ueberschuss = qs(simMarkt, preis) - qd(simMarkt, preis);
 
   const zeigLinks  = tab === 'sim';
-  const zeigChart  = tab === 'sim' || tab === 'aufgabe';
+  const zeigChart  = tab === 'sim' || tab === 'aufgabe' || (tab === 'spiel' && spiel && spiel.phase !== 'ende');
   const zeigRechts = tab === 'sim';
 
   /* ---- Layout ---- */
@@ -1203,10 +1760,11 @@ function App() {
         {/* Schrittleiste (nur große Displays) */}
         <div className="hidden lg:flex items-center gap-1 mb-3 text-[12px]">
           {[
-            { k:'sim', i:'⚙️', l:'Parameter einstellen' },
+            { k:'sim', i:'⚙️', l:'Simulation' },
             { k:'aufgabe', i:'✏️', l:'Berechnen & Lösen' },
+            { k:'spiel', i:'🏪', l:'Marktabenteuer' },
             { k:'theorie', i:'📘', l:'Theorie' },
-            { k:'fortschritt', i:'🏆', l:'Ergebnis & Fortschritt' },
+            { k:'fortschritt', i:'🏆', l:'Fortschritt' },
           ].map((s, i, arr) => (
             <React.Fragment key={s.k}>
               <button onClick={() => setTab(s.k)}
@@ -1259,13 +1817,13 @@ function App() {
           {/* MITTE OBEN: Diagramm */}
           <div className={`${zeigChart ? 'block' : 'hidden'} lg:block order-1 lg:order-none lg:col-start-2 lg:row-start-1 min-w-0`}>
             <div className="card p-2 sm:p-3">
-              {task && (
+              {(task || spiel) && (
                 <div className="flex items-center justify-center gap-1 mb-1">
-                  {['sim', 'task'].map(mm => (
+                  {['sim', 'task', ...(spiel ? ['spiel'] : [])].map(mm => (
                     <button key={mm} onClick={() => setChartModus(mm)}
                       className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${chartModus === mm
                         ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-500 border-slate-300'}`}>
-                      {mm === 'sim' ? '🎛️ Simulation' : '✏️ Aufgabe'}
+                      {mm === 'sim' ? '🎛️ Simulation' : mm === 'task' ? '✏️ Aufgabe' : '🏪 Spiel'}
                     </button>
                   ))}
                 </div>
@@ -1327,6 +1885,42 @@ function App() {
                 onPruefen={pruefen} onWeiter={weiter} />
             ))}
 
+            {tab === 'spiel' && (spiel
+              ? <SpielPanel g={spiel}
+                  onMC={i => spielAendern(g => { g.mcAntwort = i; })}
+                  onPruefeMC={spielPruefeMC}
+                  onWeiter={() => spielAendern(g => { g.phase = 'preis'; })}
+                  onPreis={v => spielAendern(g => { g.preis = v; })}
+                  onSchaetzung={v => spielAendern(g => { g.schaetzung = v; })}
+                  onVerkaufen={spielVerkaufen}
+                  onNaechste={spielNaechste}
+                  onNeu={() => spielStarten(null)} />
+              : (
+                <Card title="Marktabenteuer">
+                  <div className="text-center py-3">
+                    <div className="text-5xl mb-2">🏪</div>
+                    <div className="text-lg font-bold text-slate-800">Führe dein eigenes Unternehmen</div>
+                    <p className="text-[13px] text-slate-600 mt-1 leading-snug max-w-md mx-auto">
+                      Über {SPIEL_RUNDEN} Runden entscheidest du jede Runde neu über deinen Verkaufspreis.
+                      Ereignisse verändern Nachfrage, Kosten und den Preis deines Mitbewerbers – schätze die
+                      Marktwirkung richtig ein, rechne deinen Gewinn aus und setze den Preis klug.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center text-[11.5px] text-slate-600 my-2">
+                    <div className="rounded-lg border border-slate-200 p-2"><div className="text-xl">🃏</div>Situation einschätzen</div>
+                    <div className="rounded-lg border border-slate-200 p-2"><div className="text-xl">🎚️</div>Preis festlegen</div>
+                    <div className="rounded-lg border border-slate-200 p-2"><div className="text-xl">🧮</div>Gewinn berechnen</div>
+                  </div>
+                  {p.spielBest > 0 && (
+                    <p className="text-center text-[12px] text-amber-700 font-semibold mb-2">
+                      🏅 Dein Rekord: {eur(p.spielBest, 0)} Gesamtgewinn
+                    </p>
+                  )}
+                  <button onClick={() => spielStarten(null)}
+                    className="w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-sm">▶️ Partie starten</button>
+                </Card>
+              ))}
+
             {tab === 'theorie' && <Theorie />}
             {tab === 'fortschritt' && (
               <Fortschritt p={p}
@@ -1338,9 +1932,9 @@ function App() {
           {/* RECHTE SPALTE: Kennzahlen + Aufgabenfortschritt */}
           <div className={`${zeigRechts ? 'block' : 'hidden'} lg:block order-2 lg:order-none lg:col-start-3 lg:row-start-1 lg:row-span-2 space-y-2`}>
             <Card title={`Simulation · ${scById(scKey).name}`}>
-              {chartModus === 'task' && (
+              {chartModus !== 'sim' && (
                 <p className="mb-2 rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5 text-[10.5px] leading-snug text-amber-800">
-                  Diese Werte gehören zum Simulationsmarkt links – <b>nicht</b> zur aktuellen Aufgabe.
+                  Diese Werte gehören zum Simulationsmarkt links – <b>nicht</b> zur {chartModus === 'spiel' ? 'laufenden Partie' : 'aktuellen Aufgabe'}.
                 </p>
               )}
               <Wert label="Gleichgewichtspreis P*" value={eur(simK.P)} stark farbe="text-amber-600" />
@@ -1399,9 +1993,10 @@ function App() {
 
       {/* Untere Navigation (Smartphone/Tablet hochkant) */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-[#E6DCC6] safe-b">
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-5">
           {[
             { k:'sim', i:'📊', l:'Markt' },
+            { k:'spiel', i:'🏪', l:'Spiel' },
             { k:'aufgabe', i:'✏️', l:'Aufgaben' },
             { k:'theorie', i:'📘', l:'Theorie' },
             { k:'fortschritt', i:'🏆', l:'Fortschritt' },

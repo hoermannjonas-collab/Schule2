@@ -8,7 +8,9 @@ Sachen für schule
 - `markt-simulator.html` – Marktnachfrage-Simulator: Angebot & Nachfrage, Gleichgewicht,
   Konsumenten-/Produzentenrente, Kurvenverschiebungen, Höchst-/Mindestpreise und
   Preiselastizität. Fünf Niveaustufen mit Rechenaufgaben, Lösungskontrolle und
-  Lösungsweg; Diagramm reagiert live auf alle Änderungen. Für iPad und iPhone optimiert,
+  Lösungsweg, dazu der Spielmodus „Marktabenteuer": acht Runden Unternehmensführung
+  mit Ereigniskarten, Konkurrenzpreisen, eigener Preisentscheidung und Gewinnrechnung.
+  Diagramm reagiert live auf alle Änderungen. Für iPad und iPhone optimiert,
   Fortschritt wird nur lokal im Browser gespeichert. Benötigt beim Öffnen eine
   Internetverbindung (React und Tailwind werden über CDN geladen).
 - `markt-simulator-offline.html` – inhaltsgleiche Fassung mit eingebetteten Bibliotheken
