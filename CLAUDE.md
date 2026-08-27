@@ -24,7 +24,15 @@ Grafiken ersetzt werden.**
 - Wenn eine gewünschte Grafik fehlt: nachfragen, nicht selbst erfinden.
 
 Die Icons stammen aus den Referenzbildern der Lehrkraft und wurden mit
-`tools/icons_extrahieren.py` daraus freigestellt.
+`tools/icons_extrahieren.py` daraus freigestellt. Die Zuschnitte stehen in der
+`KARTE` dieses Skripts; ein neues Referenzblatt braucht dort nur neue Kästchen.
+
+Hinterlegt sind derzeit: 16 Güter, 8 Akteure sowie die Symbole `muenze`,
+`aktentasche`, `puzzle`, `tausch`, `herz`, `trend`, `stern`, `info`, `frage`,
+`hakenKreis`, `haken`, `pfeilAb`, `zahnrad`, `schloss`. Die Symbole ersetzen in
+der Oberfläche die früheren Emojis (Tipp, Richtig-/Falsch-Rückmeldung,
+Sternewertung, Münzen, gesperrte Abzeichen). Neue Symbole an derselben Stelle
+verwenden: `<Pixel name="…" size={0.7} />`.
 
 ### Marktwelt
 
@@ -33,10 +41,15 @@ reagieren kann:
 
 - `marktwelt-hintergrund.png` – die feststehende Szene (Gebäude, Marktstand,
   Brunnen, Wege). Wird als Bild dargestellt.
-- `marktwelt-figur-1.png` bis `-3.png` – einzelne Kundinnen und Kunden mit
+- `marktwelt-figur-1.png`, `-2.png`, … – einzelne Kundinnen und Kunden mit
   transparentem Hintergrund. Sie werden zur Laufzeit auf die in
   `FIGUR_PLAETZE` festgelegten Standorte gesetzt; ihre Anzahl folgt der
-  nachgefragten Menge.
+  nachgefragten Menge. Die Liste wird aus den Dateinamen gelesen
+  (`FIGUR_DATEIEN`) – weitere Figuren einfach durchnummeriert dazulegen,
+  im Code ist nichts zu ändern.
+- `marktwelt-kiste.png` und `marktwelt-lkw.png` – Warenkisten und Lieferwagen.
+  Ihre Anzahl folgt der angebotenen Menge; der Lieferwagen erscheint erst bei
+  hohem Angebot.
 - Die beiden Infotafeln sind HTML-Elemente mit Live-Werten und liegen exakt
   über den im Bild vorhandenen Tafeln.
 
@@ -44,6 +57,11 @@ reagieren kann:
 enthält, bleibt eine Grundbevölkerung sichtbar und der Rückgang der Nachfrage
 ist nur abgeschwächt zu erkennen. Ein personenfreies Bild kann einfach
 ausgetauscht werden, im Code ist dafür nichts zu ändern.
+
+Offen: im aktuellen Hintergrund steht rechts neben dem Baum noch eine einzelne
+Person (etwa bei x = 248…262 von 287 px). Sie wird bewusst nicht wegretuschiert
+– das wäre eine selbst erzeugte Grafik. Sobald ein Bild ohne diese Figur
+hinterlegt wird, ist die Szene vollständig personenfrei.
 
 Ist kein Hintergrundbild hinterlegt, zeichnet der Simulator eine einfache
 Ersatzszene aus den Sprites. Diese Ersatzdarstellung bitte erhalten.
@@ -56,6 +74,7 @@ Ersatzszene aus den Sprites. Diese Ersatzdarstellung bitte erhalten.
 | `markt-simulator-offline.html` | daraus erzeugt, alles eingebettet, läuft ohne Internet |
 | `index.html`, `sortimentspyramide_random.html` | Sortimentspyramide |
 | `assets/icons/` | hinterlegte Bilddateien (siehe oben) |
+| `assets/marktwelt/` | Ebenen der Marktszene (Hintergrund, Figuren, Kisten, LKW) |
 | `tools/` | Hilfsskripte zum Einbetten und Bauen |
 
 ## Aufbau von markt-simulator.html
