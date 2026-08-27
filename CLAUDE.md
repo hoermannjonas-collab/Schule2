@@ -89,6 +89,12 @@ kommentiert:
 
 Fachliche Regeln, die nicht verletzt werden dürfen:
 
+- Thema ist ausschließlich **Angebot und Nachfrage**. Der Wirtschaftskreislauf
+  wird hier nicht behandelt – keine Banken, kein Ausland, keine Finanzmärkte
+  als Marktteilnehmer. Gezeigt werden nur Akteure, die unmittelbar auf Angebot
+  oder Nachfrage wirken, sowie der Staat als Rahmensetzer (Höchst- und
+  Mindestpreise, Steuern, Subventionen).
+
 - Der Preis des Gutes bewegt den Punkt **auf** der Kurve. Er verschiebt die
   Kurven nicht.
 - Nichtpreisfaktoren (Einkommen, Komplementär- und Substitutionsgut,

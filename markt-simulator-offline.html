@@ -4475,49 +4475,39 @@ const Block = ({
 }, children));
 
 /* ---------- Marktteilnehmer und Legende ---------- */
-const TEILNEHMER = [{
+/* Nur Akteure, die unmittelbar auf Angebot oder Nachfrage wirken.
+   Der Wirtschaftskreislauf (Banken, Ausland, Finanzmärkte) ist bewusst
+   nicht Gegenstand dieser Anwendung. */
+const NACHFRAGESEITE = [{
   sprite: 'haushalte',
   name: 'Haushalte',
-  text: 'Konsumieren Güter und Dienstleistungen.'
+  text: 'Kaufen das Gut. Ihre Zahlungsbereitschaft bildet die Nachfragekurve.'
 }, {
+  sprite: 'tourist',
+  name: 'Tourist:in',
+  text: 'Nachfrage von außen – verschiebt die Nachfragekurve nach rechts.'
+}];
+const ANGEBOTSSEITE = [{
   sprite: 'unternehmen',
   name: 'Unternehmen',
-  text: 'Produzieren Güter und bieten Arbeitsplätze.'
-}, {
-  sprite: 'staat',
-  name: 'Staat',
-  text: 'Setzt Regeln und erhebt Steuern.'
-}, {
-  sprite: 'banken',
-  name: 'Banken',
-  text: 'Vergeben Kredite und fördern Investitionen.'
-}, {
-  sprite: 'ausland',
-  name: 'Ausland',
-  text: 'Handel mit anderen Ländern (Importe und Exporte).'
-}, {
-  sprite: 'finanzmaerkte',
-  name: 'Finanzmärkte',
-  text: 'Bestimmen Zinsen und beeinflussen Investitionen.'
-}];
-
-/* Konkrete Rollen, die im Marktabenteuer und in den Szenarien vorkommen. */
-const ROLLEN = [{
-  sprite: 'lieferant',
-  name: 'Lieferant',
-  text: 'Bringt Ware zum Anbieter – Lieferkosten wirken auf das Angebot.'
+  text: 'Stellen das Gut her. Ihre Kosten bilden die Angebotskurve.'
 }, {
   sprite: 'haendler',
   name: 'Händler',
   text: 'Kauft ein und verkauft weiter – lebt von der Handelsspanne.'
 }, {
-  sprite: 'tourist',
-  name: 'Tourist:in',
-  text: 'Zusätzliche Nachfrage von außen – verschiebt die Nachfragekurve.'
+  sprite: 'lieferant',
+  name: 'Lieferant',
+  text: 'Bringt die Ware zum Anbieter – Lieferkosten wirken auf das Angebot.'
 }, {
   sprite: 'investor',
   name: 'Investor:in',
-  text: 'Stellt Kapital bereit – ermöglicht Kapazitäten und mehr Angebot.'
+  text: 'Stellt Kapital bereit – ermöglicht Kapazität und mehr Angebot.'
+}];
+const RAHMEN = [{
+  sprite: 'staat',
+  name: 'Staat',
+  text: 'Höchst- und Mindestpreise, Steuern und Subventionen greifen in den Markt ein.'
 }];
 const TeilnehmerRaster = ({
   liste
@@ -4538,16 +4528,25 @@ const TeilnehmerRaster = ({
   className: "text-[9.5px] text-slate-500 leading-snug mt-0.5"
 }, t.text))));
 const Untertitel = ({
+  farbe,
   children
 }) => /*#__PURE__*/React.createElement("div", {
-  className: "text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5"
+  className: `text-[10px] font-bold uppercase tracking-wider mb-1.5 ${farbe}`
 }, children);
 const Marktteilnehmer = () => /*#__PURE__*/React.createElement("div", {
   className: "space-y-3"
-}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Untertitel, null, "Im Wirtschaftskreislauf"), /*#__PURE__*/React.createElement(TeilnehmerRaster, {
-  liste: TEILNEHMER
-})), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Untertitel, null, "Rollen auf dem Markt"), /*#__PURE__*/React.createElement(TeilnehmerRaster, {
-  liste: ROLLEN
+}, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Untertitel, {
+  farbe: "text-blue-600"
+}, "Nachfrageseite"), /*#__PURE__*/React.createElement(TeilnehmerRaster, {
+  liste: NACHFRAGESEITE
+})), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Untertitel, {
+  farbe: "text-red-600"
+}, "Angebotsseite"), /*#__PURE__*/React.createElement(TeilnehmerRaster, {
+  liste: ANGEBOTSSEITE
+})), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Untertitel, {
+  farbe: "text-slate-500"
+}, "Setzt den Rahmen"), /*#__PURE__*/React.createElement(TeilnehmerRaster, {
+  liste: RAHMEN
 })));
 const LEGENDE = [{
   sprite: 'flaecheGruen',

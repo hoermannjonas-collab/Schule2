@@ -2505,21 +2505,23 @@ const Block = ({ nr, titel, farbe = 'b-blau', children, className = '', innen = 
 );
 
 /* ---------- Marktteilnehmer und Legende ---------- */
-const TEILNEHMER = [
-  { sprite:'haushalte',     name:'Haushalte',     text:'Konsumieren Güter und Dienstleistungen.' },
-  { sprite:'unternehmen',   name:'Unternehmen',   text:'Produzieren Güter und bieten Arbeitsplätze.' },
-  { sprite:'staat',         name:'Staat',         text:'Setzt Regeln und erhebt Steuern.' },
-  { sprite:'banken',        name:'Banken',        text:'Vergeben Kredite und fördern Investitionen.' },
-  { sprite:'ausland',       name:'Ausland',       text:'Handel mit anderen Ländern (Importe und Exporte).' },
-  { sprite:'finanzmaerkte', name:'Finanzmärkte',  text:'Bestimmen Zinsen und beeinflussen Investitionen.' },
+/* Nur Akteure, die unmittelbar auf Angebot oder Nachfrage wirken.
+   Der Wirtschaftskreislauf (Banken, Ausland, Finanzmärkte) ist bewusst
+   nicht Gegenstand dieser Anwendung. */
+const NACHFRAGESEITE = [
+  { sprite:'haushalte', name:'Haushalte',  text:'Kaufen das Gut. Ihre Zahlungsbereitschaft bildet die Nachfragekurve.' },
+  { sprite:'tourist',   name:'Tourist:in', text:'Nachfrage von außen – verschiebt die Nachfragekurve nach rechts.' },
 ];
 
-/* Konkrete Rollen, die im Marktabenteuer und in den Szenarien vorkommen. */
-const ROLLEN = [
-  { sprite:'lieferant', name:'Lieferant',   text:'Bringt Ware zum Anbieter – Lieferkosten wirken auf das Angebot.' },
-  { sprite:'haendler',  name:'Händler',     text:'Kauft ein und verkauft weiter – lebt von der Handelsspanne.' },
-  { sprite:'tourist',   name:'Tourist:in',  text:'Zusätzliche Nachfrage von außen – verschiebt die Nachfragekurve.' },
-  { sprite:'investor',  name:'Investor:in', text:'Stellt Kapital bereit – ermöglicht Kapazitäten und mehr Angebot.' },
+const ANGEBOTSSEITE = [
+  { sprite:'unternehmen', name:'Unternehmen', text:'Stellen das Gut her. Ihre Kosten bilden die Angebotskurve.' },
+  { sprite:'haendler',    name:'Händler',     text:'Kauft ein und verkauft weiter – lebt von der Handelsspanne.' },
+  { sprite:'lieferant',   name:'Lieferant',   text:'Bringt die Ware zum Anbieter – Lieferkosten wirken auf das Angebot.' },
+  { sprite:'investor',    name:'Investor:in', text:'Stellt Kapital bereit – ermöglicht Kapazität und mehr Angebot.' },
+];
+
+const RAHMEN = [
+  { sprite:'staat', name:'Staat', text:'Höchst- und Mindestpreise, Steuern und Subventionen greifen in den Markt ein.' },
 ];
 
 const TeilnehmerRaster = ({ liste }) => (
@@ -2534,19 +2536,23 @@ const TeilnehmerRaster = ({ liste }) => (
   </div>
 );
 
-const Untertitel = ({ children }) => (
-  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">{children}</div>
+const Untertitel = ({ farbe, children }) => (
+  <div className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${farbe}`}>{children}</div>
 );
 
 const Marktteilnehmer = () => (
   <div className="space-y-3">
     <div>
-      <Untertitel>Im Wirtschaftskreislauf</Untertitel>
-      <TeilnehmerRaster liste={TEILNEHMER} />
+      <Untertitel farbe="text-blue-600">Nachfrageseite</Untertitel>
+      <TeilnehmerRaster liste={NACHFRAGESEITE} />
     </div>
     <div>
-      <Untertitel>Rollen auf dem Markt</Untertitel>
-      <TeilnehmerRaster liste={ROLLEN} />
+      <Untertitel farbe="text-red-600">Angebotsseite</Untertitel>
+      <TeilnehmerRaster liste={ANGEBOTSSEITE} />
+    </div>
+    <div>
+      <Untertitel farbe="text-slate-500">Setzt den Rahmen</Untertitel>
+      <TeilnehmerRaster liste={RAHMEN} />
     </div>
   </div>
 );
