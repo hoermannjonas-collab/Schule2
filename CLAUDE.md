@@ -1,0 +1,68 @@
+# Schule2 – Hinweise für die Arbeit an diesem Repository
+
+Unterrichtsmaterial für berufliche Schulen in Bayern. Jede Datei ist eine
+eigenständige HTML-Seite, die ohne Installation im Browser läuft und über
+GitHub Pages erreichbar ist.
+
+## Grafiken – verbindlich
+
+**In `assets/icons/` liegen die hinterlegten Bilddateien. Diese sind maßgeblich.
+Sie dürfen nicht nachgezeichnet, nachempfunden oder durch selbst erzeugte
+Grafiken ersetzt werden.**
+
+- Ein Bild in `assets/icons/<name>.png` hat immer Vorrang vor jeder im Code
+  gezeichneten Pixelgrafik. Der Dateiname ohne Endung ist der Schlüssel im Code
+  (z. B. `smartphone.png` → `<Pixel name="smartphone" />`).
+- Neues Icon hinterlegen oder ein bestehendes austauschen:
+  1. PNG mit transparentem Hintergrund nach `assets/icons/` legen
+  2. `python3 tools/icons_einbetten.py` ausführen
+  3. `node tools/offline_bauen.js` ausführen
+  Mehr ist nicht nötig – im Code muss dafür nichts geändert werden.
+- Nur für Motive, für die **keine** Datei hinterlegt ist, wird die gezeichnete
+  Pixelgrafik aus `SPRITES` verwendet. Wird später eine Datei nachgereicht,
+  ersetzt sie die gezeichnete Fassung automatisch.
+- Wenn eine gewünschte Grafik fehlt: nachfragen, nicht selbst erfinden.
+
+Die Icons stammen aus den Referenzbildern der Lehrkraft und wurden mit
+`tools/icons_extrahieren.py` daraus freigestellt.
+
+## Dateien
+
+| Datei | Zweck |
+|---|---|
+| `markt-simulator.html` | Marktnachfrage-Simulator (Angebot und Nachfrage), Hauptdatei |
+| `markt-simulator-offline.html` | daraus erzeugt, alles eingebettet, läuft ohne Internet |
+| `index.html`, `sortimentspyramide_random.html` | Sortimentspyramide |
+| `assets/icons/` | hinterlegte Bilddateien (siehe oben) |
+| `tools/` | Hilfsskripte zum Einbetten und Bauen |
+
+## Aufbau von markt-simulator.html
+
+Eine Datei, React über CDN, Abschnitte im Skript sind nummeriert und
+kommentiert:
+
+1. Hilfsfunktionen · 2. Marktmodell (`Qd = a − bP`, `Qs = c + dP`, Renten)
+3. Szenarien und Reglerdefinitionen · 3b Pixelgrafik · 4. Aufgabengeneratoren
+5. Diagramm · 5b Marktwelt · 6/12 Fortschritt (localStorage)
+9b Missionen · 11 Marktabenteuer · 13 Oberfläche · 14 Hauptkomponente
+
+Fachliche Regeln, die nicht verletzt werden dürfen:
+
+- Der Preis des Gutes bewegt den Punkt **auf** der Kurve. Er verschiebt die
+  Kurven nicht.
+- Nichtpreisfaktoren (Einkommen, Komplementär- und Substitutionsgut,
+  Präferenzen, Erwartungen) verändern nur den Achsenabschnitt `a` der
+  Nachfrage, also eine Parallelverschiebung.
+- Alle angezeigten Werte werden aus den hinterlegten Funktionen berechnet,
+  nichts wird fest verdrahtet.
+
+## Nach Änderungen
+
+```
+python3 tools/icons_einbetten.py   # nur nötig, wenn assets/icons/ geändert wurde
+node tools/offline_bauen.js        # erzeugt markt-simulator-offline.html neu
+                                   # einmalig vorher:  cd tools && npm install
+```
+
+Die Offline-Fassung ist immer mitzuziehen, sonst laufen beide Stände
+auseinander.
