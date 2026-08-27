@@ -19,8 +19,10 @@ Sachen für schule
   Benötigt beim Öffnen eine Internetverbindung (React und Tailwind über CDN).
 - `assets/icons/` – hinterlegte Bilddateien. Diese Grafiken sind maßgeblich und werden
   nicht nachgezeichnet; Details in `CLAUDE.md`.
+- `assets/marktwelt/` – die Marktszene als Ebenen: feststehender Hintergrund plus
+  einzelne Figuren, deren Anzahl der nachgefragten Menge folgt.
 - `tools/` – Hilfsskripte: Icons einbetten, Offline-Fassung bauen, Icons aus einem
   Referenzbild freistellen
 - `markt-simulator-offline.html` – inhaltsgleiche Fassung mit eingebetteten Bibliotheken
-  (ca. 510 KB). Läuft ohne Internetverbindung, z. B. nach Verteilung per AirDrop.
+  (ca. 790 KB). Läuft ohne Internetverbindung, z. B. nach Verteilung per AirDrop.
   Wird aus `markt-simulator.html` erzeugt und muss bei Änderungen neu gebaut werden.

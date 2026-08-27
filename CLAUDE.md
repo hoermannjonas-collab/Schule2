@@ -26,6 +26,28 @@ Grafiken ersetzt werden.**
 Die Icons stammen aus den Referenzbildern der Lehrkraft und wurden mit
 `tools/icons_extrahieren.py` daraus freigestellt.
 
+### Marktwelt
+
+`assets/marktwelt/` enthält die Szene als Ebenen, damit sie auf den Markt
+reagieren kann:
+
+- `marktwelt-hintergrund.png` – die feststehende Szene (Gebäude, Marktstand,
+  Brunnen, Wege). Wird als Bild dargestellt.
+- `marktwelt-figur-1.png` bis `-3.png` – einzelne Kundinnen und Kunden mit
+  transparentem Hintergrund. Sie werden zur Laufzeit auf die in
+  `FIGUR_PLAETZE` festgelegten Standorte gesetzt; ihre Anzahl folgt der
+  nachgefragten Menge.
+- Die beiden Infotafeln sind HTML-Elemente mit Live-Werten und liegen exakt
+  über den im Bild vorhandenen Tafeln.
+
+**Der Hintergrund sollte keine Personen enthalten.** Solange er welche
+enthält, bleibt eine Grundbevölkerung sichtbar und der Rückgang der Nachfrage
+ist nur abgeschwächt zu erkennen. Ein personenfreies Bild kann einfach
+ausgetauscht werden, im Code ist dafür nichts zu ändern.
+
+Ist kein Hintergrundbild hinterlegt, zeichnet der Simulator eine einfache
+Ersatzszene aus den Sprites. Diese Ersatzdarstellung bitte erhalten.
+
 ## Dateien
 
 | Datei | Zweck |
