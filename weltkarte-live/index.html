@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#123047">
+  <title>Unsere Klassen-Weltkarte</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">KLASSENAKTIVITÄT</p>
+        <h1>Unsere Weltkarte</h1>
+      </div>
+      <div class="topbar-meta">
+        <span id="roleBadge" class="badge">Wird geladen …</span>
+        <span id="sessionBadge" class="session-badge"></span>
+      </div>
+    </header>
+
+    <section id="setupError" class="setup-error hidden" role="alert">
+      <h2>Die Karte ist noch nicht vollständig eingerichtet.</h2>
+      <p>Bitte verwende die fertig konfigurierte Version.</p>
+    </section>
+
+    <section id="studentIntro" class="intro hidden">
+      <div>
+        <h2>Wo warst du schon?</h2>
+        <p>Tippe alle Länder und Gebiete an, die du bereits besucht hast. Deine Auswahl wird automatisch gespeichert.</p>
+      </div>
+      <div class="save-box" aria-live="polite">
+        <span id="saveDot" class="status-dot"></span>
+        <span id="saveStatus">Bereit</span>
+      </div>
+    </section>
+
+    <section id="teacherStats" class="stats hidden" aria-label="Live-Ergebnisse">
+      <article class="stat-card"><span>Teilnehmende</span><strong id="participantCount">0</strong></article>
+      <article class="stat-card"><span>Markierungen</span><strong id="selectionCount">0</strong></article>
+      <article class="stat-card"><span>Letzte Aktualisierung</span><strong id="lastUpdate">–</strong></article>
+    </section>
+
+    <section class="content-grid">
+      <div class="map-card">
+        <div id="map" aria-label="Interaktive Weltkarte"></div>
+        <div id="mapLoading" class="map-loading" aria-live="polite">
+          <div class="spinner"></div>
+          <span>Weltkarte wird geladen …</span>
+        </div>
+        <div id="legend" class="legend hidden" aria-label="Farblegende"></div>
+      </div>
+
+      <aside class="side-card">
+        <div id="studentPanel" class="hidden">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">DEINE AUSWAHL</p>
+              <h2><span id="selectedCount">0</span> Länder/Gebiete</h2>
+            </div>
+            <button id="clearButton" class="button button-quiet" type="button">Alle entfernen</button>
+          </div>
+          <ol id="selectedList" class="country-list empty-list"><li>Noch nichts ausgewählt.</li></ol>
+          <p class="privacy-note">Es werden keine Namen gespeichert. Dieses Gerät zählt pro Land höchstens einmal.</p>
+        </div>
+
+        <div id="teacherPanel" class="hidden">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">LIVE-RANGLISTE</p>
+              <h2>Meistbesuchte Länder</h2>
+            </div>
+          </div>
+          <ol id="rankingList" class="ranking-list empty-list"><li>Noch keine Markierungen.</li></ol>
+          <div class="teacher-actions">
+            <button id="refreshButton" class="button" type="button">Jetzt aktualisieren</button>
+            <button id="fullscreenButton" class="button button-quiet" type="button">Vollbild</button>
+            <button id="resetButton" class="button button-danger" type="button">Abfrage zurücksetzen</button>
+          </div>
+          <p id="teacherStatus" class="privacy-note" aria-live="polite">Automatische Aktualisierung alle 2 Sekunden.</p>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <noscript>Diese Anwendung benötigt JavaScript.</noscript>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
