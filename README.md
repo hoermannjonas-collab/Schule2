@@ -22,8 +22,19 @@ Sachen für schule
 - `assets/marktwelt/` – die Marktszene als Ebenen: feststehender Hintergrund plus
   einzelne Figuren, deren Anzahl der nachgefragten Menge folgt, sowie Warenkisten und
   Lieferwagen, die dem Angebot folgen.
-- `tools/` – Hilfsskripte: Icons einbetten, Offline-Fassung bauen, Icons aus einem
-  Referenzbild freistellen
+- `docs/` – **das ist der veröffentlichte Ordner.** GitHub Pages liefert nur diesen
+  aus; `tools/veroeffentlichen.py` spiegelt die fertigen Seiten dorthin.
+- `tools/` – Hilfsskripte: Icons einbetten, Offline-Fassung bauen, Seiten nach
+  `docs/` veröffentlichen, Icons aus einem Referenzbild freistellen
 - `markt-simulator-offline.html` – inhaltsgleiche Fassung mit eingebetteten Bibliotheken
   (ca. 650 KB). Läuft ohne Internetverbindung, z. B. nach Verteilung per AirDrop.
   Wird aus `markt-simulator.html` erzeugt und muss bei Änderungen neu gebaut werden.
+
+## Adressen für den Unterricht
+
+| Seite | Adresse |
+|---|---|
+| Sortimentspyramide | https://hoermannjonas-collab.github.io/Schule2/ |
+| Marktnachfrage-Simulator | https://hoermannjonas-collab.github.io/Schule2/markt-simulator.html |
+| Offline-Fassung zum Verteilen | https://hoermannjonas-collab.github.io/Schule2/markt-simulator-offline.html |
+| Weltkarte live | https://hoermannjonas-collab.github.io/Schule2/weltkarte-live/ |

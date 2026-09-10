@@ -103,13 +103,32 @@ Fachliche Regeln, die nicht verletzt werden dürfen:
 - Alle angezeigten Werte werden aus den hinterlegten Funktionen berechnet,
   nichts wird fest verdrahtet.
 
+## Veröffentlichung – wichtig
+
+**GitHub Pages ist für dieses Repository auf den Ordner `docs/` eingestellt.**
+Nur was in `docs/` liegt, ist unter der Adresse erreichbar. Eine Datei im
+Wurzelverzeichnis wird nicht ausgeliefert – der Link ergibt 404.
+
+Die bearbeiteten Quellen bleiben im Wurzelverzeichnis; `tools/veroeffentlichen.py`
+spiegelt die fertigen Schülerseiten nach `docs/`.
+
+Adressen:
+
+| Seite | Adresse |
+|---|---|
+| Sortimentspyramide (Startseite) | `…github.io/Schule2/` |
+| Marktnachfrage-Simulator | `…github.io/Schule2/markt-simulator.html` |
+| Offline-Fassung | `…github.io/Schule2/markt-simulator-offline.html` |
+| Weltkarte live | `…github.io/Schule2/weltkarte-live/` |
+
 ## Nach Änderungen
 
 ```
-python3 tools/icons_einbetten.py   # nur nötig, wenn assets/icons/ geändert wurde
-node tools/offline_bauen.js        # erzeugt markt-simulator-offline.html neu
-                                   # einmalig vorher:  cd tools && npm install
+python3 tools/icons_einbetten.py    # nur nötig, wenn assets/icons/ geändert wurde
+node tools/offline_bauen.js         # erzeugt markt-simulator-offline.html neu
+                                    # einmalig vorher:  cd tools && npm install
+python3 tools/veroeffentlichen.py   # spiegelt die Seiten nach docs/
 ```
 
-Die Offline-Fassung ist immer mitzuziehen, sonst laufen beide Stände
-auseinander.
+Beides ist immer mitzuziehen: ohne den Offline-Build laufen die zwei Fassungen
+auseinander, ohne den Veröffentlichungsschritt sieht die Klasse den alten Stand.
