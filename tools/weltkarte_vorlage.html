@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f7f4ed">
+<title>Unsere Klassen-Weltkarte</title>
+<!--
+  Unsere Klassen-Weltkarte
+  ========================
+  Eine einzelne HTML-Datei für den Unterricht. Kein Server, kein Build,
+  keine Internetverbindung: einfach im Browser öffnen.
+
+  Erzeugt von tools/weltkarte_bauen.py aus den Grenzdaten von Natural Earth
+  (ne_50m_admin_0_countries, Public Domain). Nicht von Hand bearbeiten,
+  sondern die Vorlage tools/weltkarte_vorlage.html ändern und neu bauen.
+
+  Aufbau des Skripts:
+    1. Daten und Speicherung (localStorage)
+    2. Farbskala und Zahlenformate
+    3. Karte aufbauen
+    4. Zoomen und Verschieben
+    5. Beschriftung der Länder
+    6. Auswahl und Eingabefeld
+    7. Kopfzeile, Rangliste, Legende
+    8. Start
+-->
+<style>
+:root{
+  --papier:#f7f4ed;
+  --ozean:#dcebf3;
+  --land:#e6e2d8;
+  --grenze:#b3ab99;
+  --schrift:#2c2a25;
+  --schrift-leise:#6d675b;
+  --linie:#ded7c8;
+  --karte-rand:#c7bfad;
+  --akzent:#1f6f8b;
+  --karte-flaeche:#ffffff;
+  --schatten:0 2px 10px rgba(60,52,36,.13);
+  --schatten-gross:0 10px 34px rgba(60,52,36,.22);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{
+  display:flex;flex-direction:column;
+  height:100vh;height:100dvh;overflow:hidden;
+  background:var(--papier);color:var(--schrift);
+  font-family:Arial,"Helvetica Neue",Helvetica,sans-serif;
+  font-size:16px;line-height:1.4;
+  overscroll-behavior:none;
+}
+
+/* ---------------------------------------------------------- Kopfzeile */
+header{
+  flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:14px 26px;
+  padding:12px 20px;background:#fffdf8;border-bottom:1px solid var(--linie);
+  box-shadow:0 1px 0 rgba(0,0,0,.03);
+}
+.titel{margin:0;font-size:22px;font-weight:bold;letter-spacing:.2px}
+.hinweis{margin:2px 0 0;font-size:13px;color:var(--schrift-leise)}
+.kopf-links{flex:1 1 260px;min-width:0}
+.zahlen{display:flex;gap:10px;flex:0 0 auto}
+.kachel{
+  min-width:112px;padding:7px 14px;border-radius:12px;
+  background:var(--karte-flaeche);border:1px solid var(--linie);text-align:center;
+}
+.kachel b{display:block;font-size:27px;line-height:1.1;font-variant-numeric:tabular-nums}
+.kachel span{display:block;font-size:12px;color:var(--schrift-leise);white-space:nowrap}
+.kopf-knopf{
+  flex:0 0 auto;border:1px solid var(--linie);background:var(--karte-flaeche);
+  color:var(--schrift-leise);border-radius:10px;padding:9px 14px;font-size:13px;
+  font-family:inherit;cursor:pointer;
+}
+.kopf-knopf:hover{border-color:var(--karte-rand);color:var(--schrift)}
+
+/* -------------------------------------------------------------- Karte */
+#buehne{
+  position:relative;flex:1 1 auto;min-height:0;
+  background:var(--ozean);overflow:hidden;touch-action:none;cursor:grab;
+}
+#buehne.zieht{cursor:grabbing}
+#karte{display:block;width:100%;height:100%}
+path.land{
+  fill:var(--land);stroke:var(--grenze);stroke-width:.9;
+  vector-effect:non-scaling-stroke;stroke-linejoin:round;
+}
+path.land.aktiv{stroke:#1f6f8b;stroke-width:2.6}
+#marken{pointer-events:none}
+#marken text{font-family:Arial,Helvetica,sans-serif;text-anchor:middle}
+#marken .halo{stroke:#fffdf8;stroke-width:4;stroke-linejoin:round;fill:none}
+#marken .name{fill:#3a352c}
+#marken .zahl{fill:#fff;font-weight:bold;font-size:13px;dominant-baseline:middle}
+#marken .pille{fill:#3c3730}
+
+/* --------------------------------------------------- Bedienelemente */
+.werkzeuge{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px}
+.werkzeuge button{
+  width:46px;height:46px;border-radius:12px;border:1px solid var(--karte-rand);
+  background:rgba(255,253,248,.95);color:var(--schrift);font-size:22px;line-height:1;
+  font-family:inherit;cursor:pointer;box-shadow:var(--schatten);
+}
+.werkzeuge button:active{background:#f0ece2}
+.werkzeuge button.klein{font-size:15px}
+
+#legende{
+  position:absolute;left:14px;top:14px;width:198px;padding:9px 11px 8px;
+  border-radius:12px;background:rgba(255,253,248,.95);border:1px solid var(--linie);
+  box-shadow:var(--schatten);font-size:12px;color:var(--schrift-leise);
+}
+#legende .balken{height:11px;border-radius:6px;margin:5px 0 4px}
+#legende .enden{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums}
+#legende .ohne{display:flex;align-items:center;gap:7px;margin-top:7px}
+#legende .kaestchen{
+  width:15px;height:11px;border-radius:3px;background:var(--land);border:1px solid var(--grenze);
+}
+
+#rangliste{
+  position:absolute;right:14px;top:14px;width:214px;max-height:calc(100% - 92px);
+  display:flex;flex-direction:column;
+  border-radius:14px;background:rgba(255,253,248,.96);border:1px solid var(--linie);
+  box-shadow:var(--schatten);overflow:hidden;
+}
+#rangliste h2{margin:0;padding:9px 13px 7px;font-size:13px;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--schrift-leise);border-bottom:1px solid var(--linie)}
+#rangliste ol{margin:0;padding:5px;list-style:none;overflow:auto}
+#rangliste li{margin:0}
+#rangliste button{
+  display:flex;width:100%;align-items:center;gap:9px;padding:6px 8px;
+  border:0;background:none;border-radius:9px;cursor:pointer;
+  font-family:inherit;font-size:14px;color:var(--schrift);text-align:left;
+}
+#rangliste button:hover{background:#f0ece2}
+#rangliste .punkt{width:13px;height:13px;border-radius:4px;flex:0 0 auto;border:1px solid rgba(0,0,0,.13)}
+#rangliste .wer{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rangliste .wieviel{font-weight:bold;font-variant-numeric:tabular-nums}
+#rangliste p{margin:0;padding:11px 13px 13px;font-size:13px;color:var(--schrift-leise)}
+
+/* ------------------------------------------------------ Eingabefeld */
+#panel{
+  position:absolute;left:14px;bottom:14px;width:308px;
+  border-radius:16px;background:#fffdf8;border:1px solid var(--karte-rand);
+  box-shadow:var(--schatten-gross);padding:15px 17px 17px;
+  transform:translateY(14px) scale(.97);opacity:0;pointer-events:none;
+  transition:opacity .16s ease,transform .16s ease;z-index:5;
+}
+#panel.offen{transform:none;opacity:1;pointer-events:auto}
+#panel .oben{display:flex;align-items:flex-start;gap:10px}
+#panel h2{margin:0;font-size:20px;line-height:1.25;flex:1 1 auto}
+#panel .zu{
+  flex:0 0 auto;width:32px;height:32px;border-radius:9px;border:1px solid var(--linie);
+  background:none;font-size:19px;line-height:1;color:var(--schrift-leise);cursor:pointer;font-family:inherit;
+}
+#panel .frage{margin:9px 0 12px;font-size:14px;color:var(--schrift-leise)}
+.zaehler{display:flex;align-items:center;gap:10px}
+.zaehler button{
+  width:54px;height:54px;flex:0 0 auto;border-radius:13px;border:1px solid var(--karte-rand);
+  background:var(--karte-flaeche);font-size:26px;line-height:1;color:var(--schrift);
+  cursor:pointer;font-family:inherit;
+}
+.zaehler button:active{background:#f0ece2}
+.zaehler input{
+  flex:1 1 auto;width:100%;min-width:0;height:54px;border-radius:13px;
+  border:1px solid var(--karte-rand);background:var(--karte-flaeche);
+  font-family:inherit;font-size:26px;font-weight:bold;text-align:center;color:var(--schrift);
+  font-variant-numeric:tabular-nums;
+}
+.zaehler input:focus{outline:2px solid var(--akzent);outline-offset:1px}
+#panel .fuss{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+#panel .null{
+  border:0;background:none;padding:6px 2px;color:var(--schrift-leise);
+  font-family:inherit;font-size:13px;text-decoration:underline;cursor:pointer;
+}
+#panel .anteil{font-size:13px;color:var(--schrift-leise)}
+
+@media (max-width:860px){
+  header{padding:9px 13px;gap:9px 14px}
+  .titel{font-size:18px}
+  .hinweis{display:none}
+  .kachel{min-width:86px;padding:5px 10px}
+  .kachel b{font-size:21px}
+  #rangliste{width:168px;top:10px;right:10px;font-size:13px}
+  #legende{width:158px;left:10px;top:10px}
+  #panel{left:10px;right:10px;bottom:10px;width:auto}
+  .werkzeuge{bottom:10px;right:10px}
+  /* Auf schmalen Geräten deckt das Eingabefeld die Zoomknöpfe ab. */
+  #buehne.panelOffen .werkzeuge{display:none}
+}
+@media (max-width:560px){
+  #rangliste{display:none}
+  #legende{width:126px;padding:7px 9px}
+  #legende .ohne{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="kopf-links">
+    <h1 class="titel">Unsere Klassen-Weltkarte</h1>
+    <p class="hinweis">Land antippen und eintragen, wie viele aus der Klasse schon dort waren.
+      Zoomen mit Mausrad, zwei Fingern oder + und &minus;.</p>
+  </div>
+  <div class="zahlen">
+    <div class="kachel"><b id="zahlLaender">0</b><span>Länder</span></div>
+    <div class="kachel"><b id="zahlBesuche">0</b><span>Besuche</span></div>
+  </div>
+  <button class="kopf-knopf" id="knopfLeeren" type="button">Alles zurücksetzen</button>
+</header>
+
+<main id="buehne">
+  <svg id="karte" xmlns="http://www.w3.org/2000/svg" aria-label="Weltkarte">
+    <g id="welt"></g>
+    <g id="marken"></g>
+  </svg>
+
+  <aside id="rangliste">
+    <h2>Meistbesucht</h2>
+    <ol id="ranglisteListe"></ol>
+    <p id="ranglisteLeer">Noch nichts eingetragen.</p>
+  </aside>
+
+  <div id="legende">
+    <div>Schülerinnen und Schüler</div>
+    <div class="balken" id="legendeBalken"></div>
+    <div class="enden"><span>1</span><span id="legendeMax">5</span></div>
+    <div class="ohne"><span class="kaestchen"></span><span>kein Eintrag</span></div>
+  </div>
+
+  <div class="werkzeuge">
+    <button type="button" id="knopfRein" aria-label="Hineinzoomen">+</button>
+    <button type="button" id="knopfRaus" aria-label="Herauszoomen">&minus;</button>
+    <button type="button" class="klein" id="knopfGanz" aria-label="Ganze Welt zeigen">Welt</button>
+  </div>
+
+  <aside id="panel" aria-live="polite">
+    <div class="oben">
+      <h2 id="panelName">Land</h2>
+      <button class="zu" type="button" id="panelZu" aria-label="Schließen">&times;</button>
+    </div>
+    <p class="frage">Wie viele aus der Klasse waren schon hier?</p>
+    <div class="zaehler">
+      <button type="button" id="panelMinus" aria-label="Eins weniger">&minus;</button>
+      <input id="panelWert" type="number" inputmode="numeric" min="0" max="999" step="1" value="0">
+      <button type="button" id="panelPlus" aria-label="Eins mehr">+</button>
+    </div>
+    <div class="fuss">
+      <button class="null" type="button" id="panelNull">auf 0 zurücksetzen</button>
+      <span class="anteil" id="panelAnteil"></span>
+    </div>
+  </aside>
+</main>
+
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+   1. Daten und Speicherung
+   ===================================================================== */
+
+/* Von tools/weltkarte_bauen.py eingesetzt. Je Land:
+   i = Kennung, n = deutscher Name, d = SVG-Pfad, x/y = Beschriftungspunkt,
+   r = Wichtigkeit der Beschriftung (2 = groß … 7 = winzig),
+   g = größte Ausdehnung in Kartenpunkten (steuert, ab wann beschriftet wird).
+   Die Liste ist bereits nach Beschriftungsvorrang sortiert. */
+var LAENDER = /*__LAENDER__*/;
+var KARTE_BREITE = /*__BREITE__*/;
+var KARTE_HOEHE  = /*__HOEHE__*/;
+
+var SCHLUESSEL = 'weltkarte-klasse-v1';
+
+/** Zahl je Land, zum Beispiel {"DEU": 24}. Nur Werte über 0 werden gespeichert. */
+var werte = laden();
+
+function laden(){
+  try{
+    var roh = window.localStorage.getItem(SCHLUESSEL);
+    if(!roh) return {};
+    var gelesen = JSON.parse(roh), sauber = {};
+    for(var k in gelesen){
+      var n = parseInt(gelesen[k], 10);
+      if(n > 0) sauber[k] = Math.min(n, 999);
+    }
+    return sauber;
+  }catch(e){ return {}; }
+}
+
+function speichern(){
+  try{ window.localStorage.setItem(SCHLUESSEL, JSON.stringify(werte)); }
+  catch(e){ /* privater Modus: die Karte funktioniert, merkt sich aber nichts */ }
+}
+
+function wertVon(kennung){ return werte[kennung] || 0; }
+
+function wertSetzen(kennung, zahl){
+  zahl = Math.max(0, Math.min(999, Math.round(zahl || 0)));
+  if(zahl === 0) delete werte[kennung]; else werte[kennung] = zahl;
+  speichern();
+}
+
+
+/* =====================================================================
+   2. Farbskala und Zahlenformate
+   ===================================================================== */
+
+/* Von einem dezenten Hellblau bei wenigen bis zu kräftigem Rot bei vielen. */
+var RAMPE = [
+  [0.00, 158, 216, 240],
+  [0.25, 111, 203, 159],
+  [0.50, 244, 211,  94],
+  [0.75, 238, 132,  52],
+  [1.00, 214,  34,  70]
+];
+
+function farbeBei(t){
+  t = Math.max(0, Math.min(1, t));
+  for(var i = 1; i < RAMPE.length; i++){
+    if(t <= RAMPE[i][0]){
+      var a = RAMPE[i-1], b = RAMPE[i];
+      var f = (t - a[0]) / (b[0] - a[0]);
+      return 'rgb(' + Math.round(a[1] + (b[1]-a[1])*f) + ','
+                    + Math.round(a[2] + (b[2]-a[2])*f) + ','
+                    + Math.round(a[3] + (b[3]-a[3])*f) + ')';
+    }
+  }
+  return 'rgb(214,34,70)';
+}
+
+/* Die Skala reicht mindestens bis 5, damit ein einzelner Eintrag nicht
+   sofort die kräftigste Farbe bekommt. */
+function skalenEnde(){
+  var groesster = 0;
+  for(var k in werte) if(werte[k] > groesster) groesster = werte[k];
+  return Math.max(5, groesster);
+}
+
+function farbeFuer(zahl, ende){
+  if(zahl <= 0) return '';
+  return farbeBei(ende > 1 ? (zahl - 1) / (ende - 1) : 1);
+}
+
+
+/* =====================================================================
+   3. Karte aufbauen
+   ===================================================================== */
+
+var buehne  = document.getElementById('buehne');
+var svg     = document.getElementById('karte');
+var welt    = document.getElementById('welt');
+var marken  = document.getElementById('marken');
+
+var pfade = {};          /* Kennung -> <path> */
+var nachKennung = {};    /* Kennung -> Datensatz */
+var ausgewaehlt = null;
+
+(function karteZeichnen(){
+  var stuecke = [];
+  for(var i = 0; i < LAENDER.length; i++){
+    var l = LAENDER[i];
+    nachKennung[l.i] = l;
+    stuecke.push('<path class="land" data-i="' + l.i + '" d="' + l.d + '"></path>');
+  }
+  welt.innerHTML = stuecke.join('');
+  var liste = welt.childNodes;
+  for(var j = 0; j < liste.length; j++) pfade[liste[j].getAttribute('data-i')] = liste[j];
+})();
+
+function faerben(){
+  var ende = skalenEnde();
+  for(var kennung in pfade){
+    var zahl = wertVon(kennung);
+    pfade[kennung].style.fill = zahl > 0 ? farbeFuer(zahl, ende) : '';
+  }
+}
+
+
+/* =====================================================================
+   4. Zoomen und Verschieben
+   ===================================================================== */
+
+/* Bildschirmpunkt = Kartenpunkt * m + (vx, vy) */
+var m = 1, vx = 0, vy = 0;
+var mGanz = 1, breite = 0, hoehe = 0;
+var TIEFSTER_ZOOM = 300;   /* so weit hinein, dass auch Kleinstaaten lesbar werden */
+
+function masseAktualisieren(neu){
+  var kasten = buehne.getBoundingClientRect();
+  breite = Math.max(1, Math.round(kasten.width));
+  hoehe  = Math.max(1, Math.round(kasten.height));
+  svg.setAttribute('viewBox', '0 0 ' + breite + ' ' + hoehe);
+  var vorher = mGanz;
+  mGanz = Math.min(breite / KARTE_BREITE, hoehe / KARTE_HOEHE);
+  if(neu){
+    m = mGanz; vx = 0; vy = 0;
+  }else if(vorher > 0){
+    /* Beim Drehen des Tablets die Mitte behalten. */
+    var mx = (breite / 2 - vx) / m, my = (hoehe / 2 - vy) / m;
+    m = Math.max(mGanz, m * (mGanz / vorher));
+    vx = breite / 2 - mx * m;
+    vy = hoehe / 2 - my * m;
+  }
+  begrenzen();
+  flaechenSperren();
+  zeichnen();
+}
+
+function begrenzen(){
+  m = Math.max(mGanz, Math.min(mGanz * TIEFSTER_ZOOM, m));
+  var bw = KARTE_BREITE * m, bh = KARTE_HOEHE * m;
+  vx = bw <= breite ? (breite - bw) / 2 : Math.max(breite - bw, Math.min(0, vx));
+  vy = bh <= hoehe  ? (hoehe  - bh) / 2 : Math.max(hoehe  - bh, Math.min(0, vy));
+}
+
+function zeichnen(){
+  welt.setAttribute('transform', 'translate(' + vx.toFixed(2) + ',' + vy.toFixed(2) + ') scale(' + m + ')');
+  beschriften();
+}
+
+function zoomenUm(faktor, px, py){
+  if(px === undefined){ px = breite / 2; py = hoehe / 2; }
+  var vorher = m;
+  m = Math.max(mGanz, Math.min(mGanz * TIEFSTER_ZOOM, m * faktor));
+  var echt = m / vorher;
+  vx = px - (px - vx) * echt;
+  vy = py - (py - vy) * echt;
+  begrenzen();
+  zeichnen();
+}
+
+/* --- Mausrad --------------------------------------------------------- */
+buehne.addEventListener('wheel', function(e){
+  e.preventDefault();
+  var schritt = e.deltaMode === 1 ? e.deltaY * 18 : (e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY);
+  var kasten = buehne.getBoundingClientRect();
+  zoomenUm(Math.exp(-schritt * 0.0016), e.clientX - kasten.left, e.clientY - kasten.top);
+}, {passive:false});
+
+/* --- Ziehen und Zwei-Finger-Geste ------------------------------------ */
+var zeiger = {};        /* Zeiger-Nummer -> {x, y} */
+var anzahlZeiger = 0;
+var start = null;       /* Merker für Tippen statt Ziehen */
+var geste = null;       /* Merker für die Zwei-Finger-Geste */
+
+function ortVon(e){
+  var kasten = buehne.getBoundingClientRect();
+  return {x: e.clientX - kasten.left, y: e.clientY - kasten.top};
+}
+
+buehne.addEventListener('pointerdown', function(e){
+  if(e.target.closest && e.target.closest('#panel, #rangliste, .werkzeuge, #legende')) return;
+  try{ buehne.setPointerCapture(e.pointerId); }catch(f){ /* nicht überall möglich */ }
+  var o = ortVon(e);
+  zeiger[e.pointerId] = o;
+  anzahlZeiger++;
+  if(anzahlZeiger === 1){
+    start = {x:o.x, y:o.y, zeit:Date.now(), ziel:e.target.closest('path.land'), bewegt:0};
+    buehne.classList.add('zieht');
+  }else if(anzahlZeiger === 2){
+    start = null;
+    geste = gesteLesen();
+  }
+});
+
+function gesteLesen(){
+  var punkte = [];
+  for(var id in zeiger) punkte.push(zeiger[id]);
+  if(punkte.length < 2) return null;
+  var dx = punkte[0].x - punkte[1].x, dy = punkte[0].y - punkte[1].y;
+  return {
+    mx: (punkte[0].x + punkte[1].x) / 2,
+    my: (punkte[0].y + punkte[1].y) / 2,
+    abstand: Math.max(1, Math.hypot(dx, dy))
+  };
+}
+
+buehne.addEventListener('pointermove', function(e){
+  if(!zeiger[e.pointerId]) return;
+  var vorher = zeiger[e.pointerId];
+  var o = ortVon(e);
+  zeiger[e.pointerId] = o;
+
+  if(anzahlZeiger === 1 && start){
+    start.bewegt += Math.abs(o.x - vorher.x) + Math.abs(o.y - vorher.y);
+    vx += o.x - vorher.x;
+    vy += o.y - vorher.y;
+    begrenzen();
+    zeichnen();
+  }else if(anzahlZeiger >= 2 && geste){
+    var jetzt = gesteLesen();
+    if(!jetzt) return;
+    var vorherM = m;
+    m = Math.max(mGanz, Math.min(mGanz * TIEFSTER_ZOOM, m * (jetzt.abstand / geste.abstand)));
+    var echt = m / vorherM;
+    vx = jetzt.mx - (geste.mx - vx) * echt;
+    vy = jetzt.my - (geste.my - vy) * echt;
+    geste = jetzt;
+    begrenzen();
+    zeichnen();
+  }
+});
+
+function zeigerWeg(e){
+  if(!zeiger[e.pointerId]) return;
+  var war = anzahlZeiger;
+  delete zeiger[e.pointerId];
+  anzahlZeiger = Math.max(0, anzahlZeiger - 1);
+  geste = anzahlZeiger >= 2 ? gesteLesen() : null;
+  if(anzahlZeiger === 1 && war >= 2){
+    /* Ein Finger bleibt liegen: nahtlos weiterschieben, aber nicht als
+       Tippen werten. */
+    start = {x:0, y:0, zeit:0, ziel:null, bewegt:999};
+  }
+  if(anzahlZeiger === 0){
+    buehne.classList.remove('zieht');
+    if(war === 1 && start && start.bewegt < 9 && Date.now() - start.zeit < 700) getippt(e, start.ziel);
+    start = null;
+  }
+}
+buehne.addEventListener('pointerup', zeigerWeg);
+buehne.addEventListener('pointercancel', zeigerWeg);
+
+/* --- Doppelklick ----------------------------------------------------- */
+buehne.addEventListener('dblclick', function(e){
+  if(e.target.closest && e.target.closest('#panel, #rangliste, .werkzeuge, #legende')) return;
+  var o = ortVon(e);
+  zoomenUm(1.9, o.x, o.y);
+});
+
+document.getElementById('knopfRein').onclick = function(){ zoomenUm(1.7); };
+document.getElementById('knopfRaus').onclick = function(){ zoomenUm(1/1.7); };
+document.getElementById('knopfGanz').onclick = function(){ hinfliegen(null); };
+
+/* --- Weiche Fahrt zu einem Land -------------------------------------- */
+var fahrt = null;
+
+function hinfliegen(land){
+  var zielM, zielX, zielY;
+  if(land){
+    zielM = Math.max(mGanz, Math.min(mGanz * TIEFSTER_ZOOM,
+             0.42 * Math.min(breite, hoehe) / Math.max(land.g, 40)));
+    zielX = breite / 2 - land.x * zielM;
+    zielY = hoehe / 2 - land.y * zielM;
+  }else{
+    zielM = mGanz;
+    zielX = (breite - KARTE_BREITE * mGanz) / 2;
+    zielY = (hoehe - KARTE_HOEHE * mGanz) / 2;
+  }
+  fahrt = {vonM:m, vonX:vx, vonY:vy, zuM:zielM, zuX:zielX, zuY:zielY, start:0};
+  requestAnimationFrame(fahrtSchritt);
+}
+
+function fahrtSchritt(zeit){
+  if(!fahrt) return;
+  if(!fahrt.start) fahrt.start = zeit;
+  var t = Math.min(1, (zeit - fahrt.start) / 480);
+  var e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+  m  = fahrt.vonM + (fahrt.zuM - fahrt.vonM) * e;
+  vx = fahrt.vonX + (fahrt.zuX - fahrt.vonX) * e;
+  vy = fahrt.vonY + (fahrt.zuY - fahrt.vonY) * e;
+  begrenzen();
+  zeichnen();
+  if(t < 1) requestAnimationFrame(fahrtSchritt); else fahrt = null;
+}
+
+
+/* =====================================================================
+   5. Beschriftung der Länder
+   ===================================================================== */
+
+/* Gezeichnet werden nur Namen, die Platz haben. In der Weltansicht sind das
+   die großen Länder; beim Hineinzoomen rücken die Namen auseinander, und
+   nach und nach bekommt jedes Land seinen Namen. */
+
+var SCHRIFTGROESSE = {2:17, 3:15, 4:13.5, 5:12.5, 6:12, 7:11.5};
+var PILLE_HOEHE = 22;   /* Platzbedarf der Zahl samt Rand */
+
+var breiten = {};       /* einmal gemessene Textbreiten */
+var messer = document.createElement('canvas').getContext('2d');
+var poolName = [], poolZahl = [];
+var benutztName = 0, benutztZahl = 0;
+var belegt = [];        /* schon vergebene Flächen auf dem Bildschirm */
+
+function textBreite(l, gr){
+  var schluessel = l.i + '|' + gr;
+  if(breiten[schluessel] === undefined){
+    messer.font = 'bold ' + gr + 'px Arial, Helvetica, sans-serif';
+    breiten[schluessel] = messer.measureText(l.n).width;
+  }
+  return breiten[schluessel];
+}
+
+/** Prüft, ob ein Kasten noch frei ist, und merkt ihn sich gegebenenfalls vor. */
+function platzNehmen(mx, my, kb, kh){
+  var x0 = mx - kb/2, x1 = mx + kb/2, y0 = my - kh/2, y1 = my + kh/2;
+  for(var k = 0; k < belegt.length; k++){
+    var b = belegt[k];
+    if(x0 < b.x1 && x1 > b.x0 && y0 < b.y1 && y1 > b.y0) return false;
+  }
+  belegt.push({x0:x0, x1:x1, y0:y0, y1:y1});
+  return true;
+}
+
+function namensfeld(nr){
+  if(poolName[nr]) return poolName[nr];
+  var ns = 'http://www.w3.org/2000/svg';
+  var g = document.createElementNS(ns, 'g');
+  var halo = document.createElementNS(ns, 'text');
+  halo.setAttribute('class', 'halo');
+  var name = document.createElementNS(ns, 'text');
+  name.setAttribute('class', 'name');
+  g.appendChild(halo); g.appendChild(name);
+  marken.appendChild(g);
+  poolName[nr] = {g:g, halo:halo, name:name};
+  return poolName[nr];
+}
+
+function zahlenfeld(nr){
+  if(poolZahl[nr]) return poolZahl[nr];
+  var ns = 'http://www.w3.org/2000/svg';
+  var g = document.createElementNS(ns, 'g');
+  var pille = document.createElementNS(ns, 'rect');
+  pille.setAttribute('class', 'pille');
+  pille.setAttribute('rx', '7');
+  pille.setAttribute('height', '18');
+  pille.setAttribute('y', '-9');
+  var zahl = document.createElementNS(ns, 'text');
+  zahl.setAttribute('class', 'zahl');
+  zahl.setAttribute('y', '0');
+  g.appendChild(pille); g.appendChild(zahl);
+  marken.appendChild(g);
+  poolZahl[nr] = {g:g, pille:pille, zahl:zahl};
+  return poolZahl[nr];
+}
+
+/* Rangliste, Legende, Zoomknöpfe und das geöffnete Eingabefeld liegen über der
+   Karte. Ihre Flächen werden vorab belegt, damit dort keine Namen verschwinden. */
+var gesperrt = [];
+
+function flaechenSperren(){
+  gesperrt.length = 0;
+  var rahmen = buehne.getBoundingClientRect();
+  var teile = [document.getElementById('rangliste'), document.getElementById('legende'),
+               document.querySelector('.werkzeuge'), panel];
+  for(var i = 0; i < teile.length; i++){
+    var el = teile[i];
+    if(!el || !el.offsetParent) continue;
+    if(el === panel && !panel.classList.contains('offen')) continue;
+    var r = el.getBoundingClientRect();
+    gesperrt.push({
+      x0: r.left - rahmen.left - 6, x1: r.right - rahmen.left + 6,
+      y0: r.top - rahmen.top - 6,  y1: r.bottom - rahmen.top + 6
+    });
+  }
+}
+
+function beschriften(){
+  belegt.length = 0;
+  for(var s = 0; s < gesperrt.length; s++) belegt.push(gesperrt[s]);
+  benutztName = 0;
+  benutztZahl = 0;
+  var ende = skalenEnde();
+
+  /* Die eingetragenen Länder zuerst, das meistbesuchte voran. */
+  var mitEintrag = [];
+  for(var i = 0; i < LAENDER.length; i++) if(wertVon(LAENDER[i].i) > 0) mitEintrag.push(LAENDER[i]);
+  mitEintrag.sort(function(a, b){ return wertVon(b.i) - wertVon(a.i); });
+
+  /* Erst alle Zahlen: sie sind das Ergebnis der Klasse und sollen auch dann
+     stehen bleiben, wenn für den Namen kein Platz mehr ist. */
+  for(var a = 0; a < mitEintrag.length; a++) zahlSetzen(mitEintrag[a], ende);
+  /* Dann die Namen der eingetragenen Länder, danach alle übrigen. */
+  for(var b = 0; b < mitEintrag.length; b++) nameSetzen(mitEintrag[b], true);
+  for(var c = 0; c < LAENDER.length; c++) nameSetzen(LAENDER[c], false);
+
+  for(var n = benutztName; n < poolName.length; n++) poolName[n].g.setAttribute('display', 'none');
+  for(var z = benutztZahl; z < poolZahl.length; z++) poolZahl[z].g.setAttribute('display', 'none');
+}
+
+function zahlSetzen(l, ende){
+  var sx = l.x * m + vx, sy = l.y * m + vy;
+  if(sx < -40 || sx > breite + 40 || sy < -30 || sy > hoehe + 30) return;
+  if(l.g * m < 8) return;                 /* Land noch zu klein, um es zu zeigen */
+
+  var zahl = wertVon(l.i);
+  var text = String(zahl);
+  var pb = Math.max(24, 13 + text.length * 9);
+  if(!platzNehmen(sx, sy, pb + 4, PILLE_HOEHE)) return;
+
+  var feld = zahlenfeld(benutztZahl++);
+  feld.g.setAttribute('transform', 'translate(' + sx.toFixed(1) + ',' + sy.toFixed(1) + ')');
+  feld.g.removeAttribute('display');
+  feld.pille.setAttribute('x', (-pb/2).toFixed(1));
+  feld.pille.setAttribute('width', pb.toFixed(1));
+  feld.pille.setAttribute('fill', farbeStark(zahl, ende));
+  feld.zahl.textContent = text;
+}
+
+function nameSetzen(l, mitEintrag){
+  var zahl = wertVon(l.i);
+  if(mitEintrag !== (zahl > 0)) return;
+
+  var sx = l.x * m + vx, sy = l.y * m + vy;
+  if(sx < -60 || sx > breite + 60 || sy < -40 || sy > hoehe + 40) return;
+
+  var gr = SCHRIFTGROESSE[l.r] || 12;
+  var tb = textBreite(l, gr);
+
+  /* Ein Name soll nicht deutlich größer wirken als sein Land: erst wenn das
+     Land breit genug auf dem Bildschirm liegt, wird es beschriftet. So sind
+     zu Beginn nur die großen Länder benannt, und beim Hineinzoomen kommen
+     nach und nach alle übrigen dazu. Länder mit Eintrag melden sich früher. */
+  var noetig = Math.max(9, Math.min(tb * 0.42, 30));
+  /* Bei Kleinstaaten ist der Name zwangsläufig größer als das Land. Sie
+     bekommen ihn, sobald sie überhaupt zu erkennen sind. */
+  if(l.g < 500) noetig = 9;
+  if(zahl > 0) noetig *= 0.55;
+  if(l.g * m < noetig) return;
+
+  /* Ohne Zahl steht der Name mittig auf dem Land, mit Zahl darüber. */
+  var grundlinie = zahl > 0 ? -14 : gr * 0.35;
+  var mitte = zahl > 0 ? sy - 11 - (gr + 4) / 2 : sy;
+  if(!platzNehmen(sx, mitte, tb + 8, gr + 4)) return;
+
+  var feld = namensfeld(benutztName++);
+  feld.g.setAttribute('transform', 'translate(' + sx.toFixed(1) + ',' + sy.toFixed(1) + ')');
+  feld.g.removeAttribute('display');
+  var stil = 'font-size:' + gr + 'px;font-weight:' + (l.r <= 3 ? 'bold' : '600');
+  feld.halo.setAttribute('y', grundlinie); feld.halo.setAttribute('style', stil);
+  feld.name.setAttribute('y', grundlinie); feld.name.setAttribute('style', stil);
+  if(feld.name.textContent !== l.n){ feld.halo.textContent = l.n; feld.name.textContent = l.n; }
+}
+
+/* Die Zahlenpille bekommt eine dunklere Fassung der Landesfarbe, damit die
+   weiße Ziffer immer gut lesbar bleibt. */
+function farbeStark(zahl, ende){
+  var roh = farbeFuer(zahl, ende).match(/\d+/g);
+  return 'rgb(' + Math.round(roh[0]*0.62) + ',' + Math.round(roh[1]*0.62) + ',' + Math.round(roh[2]*0.62) + ')';
+}
+
+
+/* =====================================================================
+   6. Auswahl und Eingabefeld
+   ===================================================================== */
+
+var panel      = document.getElementById('panel');
+var panelName  = document.getElementById('panelName');
+var panelWert  = document.getElementById('panelWert');
+var panelAnteil= document.getElementById('panelAnteil');
+
+function getippt(e, pfad){
+  if(pfad){ auswaehlen(pfad.getAttribute('data-i')); return; }
+  /* Ins Meer getippt: kleine Inselstaaten in der Nähe trotzdem treffen. */
+  var o = ortVon(e), naechstes = null, kuerzeste = 26;
+  for(var i = 0; i < LAENDER.length; i++){
+    var l = LAENDER[i];
+    var d = Math.hypot(l.x * m + vx - o.x, l.y * m + vy - o.y);
+    if(d < kuerzeste){ kuerzeste = d; naechstes = l; }
+  }
+  if(naechstes) auswaehlen(naechstes.i); else schliessen();
+}
+
+function auswaehlen(kennung){
+  var l = nachKennung[kennung];
+  if(!l) return;
+  if(ausgewaehlt && pfade[ausgewaehlt]) pfade[ausgewaehlt].classList.remove('aktiv');
+  ausgewaehlt = kennung;
+  pfade[kennung].classList.add('aktiv');
+  pfade[kennung].parentNode.appendChild(pfade[kennung]);   /* Rand ganz nach vorn */
+  panelName.textContent = l.n;
+  panelWert.value = wertVon(kennung);
+  anteilZeigen();
+  panel.classList.add('offen');
+  buehne.classList.add('panelOffen');
+  flaechenSperren();
+  beschriften();
+}
+
+function schliessen(){
+  if(ausgewaehlt && pfade[ausgewaehlt]) pfade[ausgewaehlt].classList.remove('aktiv');
+  ausgewaehlt = null;
+  panel.classList.remove('offen');
+  buehne.classList.remove('panelOffen');
+  flaechenSperren();
+  beschriften();
+}
+
+function anteilZeigen(){
+  var zahl = ausgewaehlt ? wertVon(ausgewaehlt) : 0;
+  panelAnteil.textContent = zahl === 0 ? 'noch niemand'
+                          : zahl === 1 ? '1 Person' : zahl + ' Personen';
+}
+
+function ausPanelUebernehmen(zahl){
+  if(!ausgewaehlt) return;
+  wertSetzen(ausgewaehlt, zahl);
+  panelWert.value = wertVon(ausgewaehlt);
+  anteilZeigen();
+  faerben();
+  kopfzeile();
+  ranglisteZeigen();
+  legendeZeigen();
+  beschriften();
+}
+
+panelWert.addEventListener('input', function(){
+  var zahl = parseInt(panelWert.value, 10);
+  if(isNaN(zahl)) return;                       /* leeres Feld beim Tippen zulassen */
+  ausPanelUebernehmen(zahl);
+});
+panelWert.addEventListener('blur', function(){ ausPanelUebernehmen(parseInt(panelWert.value, 10) || 0); });
+panelWert.addEventListener('keydown', function(e){ if(e.key === 'Enter') panelWert.blur(); });
+panelWert.addEventListener('focus', function(){ panelWert.select(); });
+
+document.getElementById('panelPlus').onclick  = function(){ ausPanelUebernehmen((parseInt(panelWert.value,10)||0) + 1); };
+document.getElementById('panelMinus').onclick = function(){ ausPanelUebernehmen((parseInt(panelWert.value,10)||0) - 1); };
+document.getElementById('panelNull').onclick  = function(){ ausPanelUebernehmen(0); };
+document.getElementById('panelZu').onclick    = schliessen;
+
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape') schliessen();
+});
+
+document.getElementById('knopfLeeren').onclick = function(){
+  var anzahl = Object.keys(werte).length;
+  if(anzahl === 0){ return; }
+  if(!window.confirm('Alle ' + anzahl + ' Einträge löschen? Das lässt sich nicht rückgängig machen.')) return;
+  werte = {};
+  speichern();
+  schliessen();
+  faerben();
+  kopfzeile();
+  ranglisteZeigen();
+  legendeZeigen();
+  beschriften();
+};
+
+
+/* =====================================================================
+   7. Kopfzeile, Rangliste, Legende
+   ===================================================================== */
+
+function kopfzeile(){
+  var laender = 0, besuche = 0;
+  for(var k in werte){ laender++; besuche += werte[k]; }
+  document.getElementById('zahlLaender').textContent = laender;
+  document.getElementById('zahlBesuche').textContent = besuche;
+}
+
+function ranglisteZeigen(){
+  var liste = document.getElementById('ranglisteListe');
+  var leer  = document.getElementById('ranglisteLeer');
+  var ende  = skalenEnde();
+  var reihe = [];
+  for(var k in werte) if(nachKennung[k]) reihe.push({l:nachKennung[k], w:werte[k]});
+  reihe.sort(function(a,b){ return b.w - a.w || a.l.n.localeCompare(b.l.n, 'de'); });
+  reihe = reihe.slice(0, 8);
+
+  liste.innerHTML = '';
+  leer.style.display = reihe.length ? 'none' : '';
+  for(var i = 0; i < reihe.length; i++){
+    (function(eintrag){
+      var li = document.createElement('li');
+      var knopf = document.createElement('button');
+      knopf.type = 'button';
+      var punkt = document.createElement('span');
+      punkt.className = 'punkt';
+      punkt.style.background = farbeFuer(eintrag.w, ende);
+      var wer = document.createElement('span');
+      wer.className = 'wer';
+      wer.textContent = eintrag.l.n;
+      var wieviel = document.createElement('span');
+      wieviel.className = 'wieviel';
+      wieviel.textContent = eintrag.w;
+      knopf.appendChild(punkt); knopf.appendChild(wer); knopf.appendChild(wieviel);
+      knopf.onclick = function(){ hinfliegen(eintrag.l); auswaehlen(eintrag.l.i); };
+      li.appendChild(knopf);
+      liste.appendChild(li);
+    })(reihe[i]);
+  }
+  flaechenSperren();
+}
+
+function legendeZeigen(){
+  var ende = skalenEnde();
+  var stufen = [];
+  for(var i = 0; i <= 10; i++) stufen.push(farbeBei(i/10) + ' ' + (i*10) + '%');
+  document.getElementById('legendeBalken').style.background =
+    'linear-gradient(90deg,' + stufen.join(',') + ')';
+  document.getElementById('legendeMax').textContent = ende;
+}
+
+
+/* =====================================================================
+   8. Start
+   ===================================================================== */
+
+window.addEventListener('resize', function(){ masseAktualisieren(false); });
+if(window.visualViewport) window.visualViewport.addEventListener('resize', function(){ masseAktualisieren(false); });
+
+faerben();
+kopfzeile();
+ranglisteZeigen();
+legendeZeigen();
+masseAktualisieren(true);
+
+})();
+</script>
+</body>
+</html>

@@ -17,6 +17,16 @@ Sachen für schule
   mit Rechenaufgaben und der Spielmodus „Marktabenteuer" (acht Runden Unternehmensführung).
   Für Laptop, iPad und iPhone; Fortschritt nur lokal im Browser.
   Benötigt beim Öffnen eine Internetverbindung (React und Tailwind über CDN).
+- `weltkarte-klasse.html` – **Klassen-Weltkarte** „Wo wart ihr schon?“
+  Alle Staaten der Welt mit echten Grenzen und deutschen Namen. Auf ein Land tippen
+  und eintragen, wie viele aus der Klasse schon dort waren; die Zahl färbt das Land
+  von einem dezenten Hellblau bis zu kräftigem Rot ein. Kopfzeile mit Länder- und
+  Besuchszahl, Rangliste der meistbesuchten Länder, Zoomen per Mausrad, zwei Fingern
+  oder Knöpfen. Eine einzige gemeinsame Fassung für die ganze Klasse, kein Login.
+  Läuft ohne Internetverbindung, auch per Doppelklick von einem USB-Stick.
+  Die Zahlen liegen im `localStorage` des jeweiligen Geräts.
+  Wird aus `tools/weltkarte_vorlage.html` erzeugt (`python3 tools/weltkarte_bauen.py`);
+  die Grenzen stammen von Natural Earth (50m, Public Domain).
 - `assets/icons/` – hinterlegte Bilddateien. Diese Grafiken sind maßgeblich und werden
   nicht nachgezeichnet; Details in `CLAUDE.md`.
 - `assets/marktwelt/` – die Marktszene als Ebenen: feststehender Hintergrund plus
@@ -37,4 +47,5 @@ Sachen für schule
 | Sortimentspyramide | https://hoermannjonas-collab.github.io/Schule2/ |
 | Marktnachfrage-Simulator | https://hoermannjonas-collab.github.io/Schule2/markt-simulator.html |
 | Offline-Fassung zum Verteilen | https://hoermannjonas-collab.github.io/Schule2/markt-simulator-offline.html |
+| Klassen-Weltkarte | https://hoermannjonas-collab.github.io/Schule2/weltkarte-klasse.html |
 | Weltkarte live | https://hoermannjonas-collab.github.io/Schule2/weltkarte-live/ |

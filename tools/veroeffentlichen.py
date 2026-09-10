@@ -23,6 +23,7 @@ SEITEN = [
     'markt-simulator-offline.html',
     'index.html',
     'sortimentspyramide_random.html',
+    'weltkarte-klasse.html',
 ]
 
 

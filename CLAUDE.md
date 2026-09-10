@@ -73,6 +73,8 @@ Ersatzszene aus den Sprites. Diese Ersatzdarstellung bitte erhalten.
 | `markt-simulator.html` | Marktnachfrage-Simulator (Angebot und Nachfrage), Hauptdatei |
 | `markt-simulator-offline.html` | daraus erzeugt, alles eingebettet, läuft ohne Internet |
 | `index.html`, `sortimentspyramide_random.html` | Sortimentspyramide |
+| `weltkarte-klasse.html` | Klassen-Weltkarte, erzeugt (nicht von Hand ändern) |
+| `tools/weltkarte_vorlage.html` | Vorlage dazu, hier wird gearbeitet |
 | `assets/icons/` | hinterlegte Bilddateien (siehe oben) |
 | `assets/marktwelt/` | Ebenen der Marktszene (Hintergrund, Figuren, Kisten, LKW) |
 | `tools/` | Hilfsskripte zum Einbetten und Bauen |
@@ -103,6 +105,42 @@ Fachliche Regeln, die nicht verletzt werden dürfen:
 - Alle angezeigten Werte werden aus den hinterlegten Funktionen berechnet,
   nichts wird fest verdrahtet.
 
+## Aufbau von weltkarte-klasse.html
+
+Eine einzelne Datei ohne Bibliotheken, ohne Server und ohne Internetverbindung:
+Ländergrenzen, deutsche Namen und Beschriftungspunkte stecken als Datenliteral
+darin. Die Klasse trägt je Land eine Zahl ein, gespeichert wird im
+`localStorage` des Geräts.
+
+**Die Datei wird erzeugt und nicht von Hand bearbeitet.** Geändert wird
+`tools/weltkarte_vorlage.html`, danach:
+
+```
+python3 tools/weltkarte_bauen.py
+```
+
+Das Skript lädt beim ersten Mal `ne_50m_admin_0_countries` von Natural Earth
+(Public Domain) nach `tools/cache/`, projiziert die Punkte mit Natural Earth 1,
+rundet sie auf ein ganzzahliges Raster und setzt sie in die Vorlage ein.
+
+Regeln, die nicht verletzt werden dürfen:
+
+- **50m-Auflösung, nicht 110m.** Die 110m-Fassung lässt sämtliche Kleinstaaten
+  weg (Monaco, San Marino, Malta, Liechtenstein, Vatikanstadt …); im Unterricht
+  sollen aber alle Staaten anklickbar sein.
+- Namen kommen aus dem Feld `NAME_DE` von Natural Earth. Abweichungen stehen in
+  der Tabelle `NAMEN` im Bauskript und werden über `ADMIN` zugeordnet, nie über
+  `SOVEREIGNT`, sonst heißen alle Überseegebiete wie ihr Mutterland.
+- Koordinaten werden **gerundet, nicht vereinfacht.** Gleiche Ausgangspunkte
+  ergeben gleiche Rasterpunkte, dadurch liegen gemeinsame Grenzen exakt
+  aufeinander und es entstehen keine Lücken zwischen Nachbarländern.
+- Welche Namen zu sehen sind, entscheidet sich zur Laufzeit: ein Name wird nur
+  gezeichnet, wenn das Land groß genug auf dem Bildschirm liegt und der Kasten
+  noch frei ist. So sind zu Beginn nur die großen Länder beschriftet, und beim
+  Hineinzoomen kommen alle übrigen dazu. Feste Zoomstufen je Land gibt es nicht.
+- Zahlen der Klasse haben Vorrang vor Namen: erst werden alle Zahlen gesetzt,
+  dann die Namen.
+
 ## Veröffentlichung – wichtig
 
 **GitHub Pages ist für dieses Repository auf den Ordner `docs/` eingestellt.**
@@ -119,6 +157,7 @@ Adressen:
 | Sortimentspyramide (Startseite) | `…github.io/Schule2/` |
 | Marktnachfrage-Simulator | `…github.io/Schule2/markt-simulator.html` |
 | Offline-Fassung | `…github.io/Schule2/markt-simulator-offline.html` |
+| Klassen-Weltkarte | `…github.io/Schule2/weltkarte-klasse.html` |
 | Weltkarte live | `…github.io/Schule2/weltkarte-live/` |
 
 ## Nach Änderungen
@@ -127,6 +166,7 @@ Adressen:
 python3 tools/icons_einbetten.py    # nur nötig, wenn assets/icons/ geändert wurde
 node tools/offline_bauen.js         # erzeugt markt-simulator-offline.html neu
                                     # einmalig vorher:  cd tools && npm install
+python3 tools/weltkarte_bauen.py    # nur nötig, wenn die Weltkarte geändert wurde
 python3 tools/veroeffentlichen.py   # spiegelt die Seiten nach docs/
 ```
 
