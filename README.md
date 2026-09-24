@@ -8,7 +8,9 @@ Sachen für schule
 - `markt-simulator.html` – **Marktnachfrage-Simulator** für den Wirtschaftsunterricht
   (Angebot und Nachfrage, Marktgleichgewicht, Konsumenten- und Produzentenrente,
   Kurvenverschiebungen, staatliche Eingriffe, Preiselastizität).
-  Heller Pixel-Art-Arbeitsbereich in sechs Schritten: Markt wählen → Parameter festlegen →
+  Startet mit einem Themenmenü: fünf Themen, jeweils *Rechnen* oder *Diagramme zeichnen*
+  (auf Papier zeichnen, dann Musterlösung und Checkliste). Dazu der Simulator als heller
+  Pixel-Art-Arbeitsbereich in sechs Schritten: Markt wählen → Parameter festlegen →
   Marktdiagramm → Aufgaben → Vorher-Nachher-Analyse → Ergebnisse.
   Sechzehn Güter mit ökonomisch passenden Komplementär- und Substitutionsgütern, Icons aus
   `assets/icons/`, reaktive Pixel-Marktwelt, Marktteilnehmer-Übersicht und

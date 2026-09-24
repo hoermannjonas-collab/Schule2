@@ -34,6 +34,10 @@ der Oberfläche die früheren Emojis (Tipp, Richtig-/Falsch-Rückmeldung,
 Sternewertung, Münzen, gesperrte Abzeichen). Neue Symbole an derselben Stelle
 verwenden: `<Pixel name="…" size={0.7} />`.
 
+Für die Kachel „Diagramme zeichnen" im Startmenü gibt es noch kein eigenes
+Motiv; angezeigt wird die Nachfragekurve. Wird `assets/icons/stift.png`
+hinterlegt, erscheint automatisch der Stift (`symbolOder('stift', …)`).
+
 ### Marktwelt
 
 `assets/marktwelt/` enthält die Szene als Ebenen, damit sie auf den Markt
@@ -84,8 +88,30 @@ kommentiert:
 
 1. Hilfsfunktionen · 2. Marktmodell (`Qd = a − bP`, `Qs = c + dP`, Renten)
 3. Szenarien und Reglerdefinitionen · 3b Pixelgrafik · 4. Aufgabengeneratoren
-5. Diagramm · 5b Marktwelt · 6/12 Fortschritt (localStorage)
-9b Missionen · 11 Marktabenteuer · 13 Oberfläche · 14 Hauptkomponente
+4b Zeichenaufgaben · 5. Diagramm · 5b Marktwelt · 6/12 Fortschritt (localStorage)
+9b Missionen · 11 Marktabenteuer · 13 Oberfläche · 13b Zeichenübung
+13c Startmenü · 14 Hauptkomponente
+
+Die App startet mit dem **Startmenü** (Themenübersicht). Jedes der fünf Themen
+hat zwei Wege: *Rechnen* (Niveaustufe gleicher Nummer) und *Zeichnen*.
+
+### Zeichenübung
+
+Die Schülerinnen und Schüler zeichnen auf Papier und decken dann die
+Musterlösung auf. Sieben Aufgabentypen: Wertetabelle und Funktionen (Thema 1),
+Renten (2), Verschiebung mit Zahlen und Skizze ohne Zahlen (3), Höchst- bzw.
+Mindestpreis (4), Elastizität an der Nachfragekurve (5).
+
+- `papierSkala` legt die Achsen für kariertes Papier fest (glatte Schritte,
+  höchstens 12 cm je Achse). Die Musterlösung benutzt **genau dieselbe**
+  Einteilung (`achsen` an `MarktChart`), damit man direkt vergleichen kann.
+- `zeichenMarkt` nimmt nur Märkte, deren Gleichgewicht mittig auf den Achsen
+  liegt – sonst drängt sich die Zeichnung in eine Ecke.
+- Musterlösungen laufen über `MarktChart` im Lösungsmodus (`zeichnung`):
+  Kurven heißen N/A bzw. N₀/N₁ und A₀/A₁, Gleichgewichte werden an den Achsen
+  beschriftet.
+- Die Münzen gibt es fürs Zeichnen und Vergleichen, **nicht** für die Anzahl der
+  Haken in der Checkliste – sonst lohnt es sich, ungeprüft abzuhaken.
 
 Fachliche Regeln, die nicht verletzt werden dürfen:
 

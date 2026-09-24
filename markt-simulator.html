@@ -826,13 +826,22 @@ const SHIFT_OPTIONS = [
   'Die Angebotskurve verschiebt sich nach links (Angebot sinkt).',
 ];
 
+// Parallelverschiebung einer Kurve: nur der Achsenabschnitt ändert sich (a bzw. c).
+// k ist die Preisänderung im neuen Gleichgewicht, delta die Mengenverschiebung bei jedem Preis.
+function verschiebeMarkt(sc, m, ev, gross = false) {
+  const grenze = Math.min(m.kb, m.kd, m.P);
+  const moeglich = sc.steps.filter(s => s > 0 && s < grenze);
+  const k = moeglich.length ? (gross ? Math.max(...moeglich) : pick(moeglich)) : grenze / 2;
+  const delta = k * (m.b + m.d);
+  const vz = ev.dir === 'rechts' ? 1 : -1;
+  const m2 = ev.curve === 'N' ? { ...m, a: m.a + vz * delta } : { ...m, c: m.c + vz * delta };
+  return { m2, k, delta };
+}
+
 function taskVerschiebung() {
   const sc = pick(SCENARIOS), m = makeMarket(sc);
   const ev = pick(SHIFT_EVENTS);
-  const grenze = Math.min(m.kb, m.kd, m.P);
-  const moeglich = sc.steps.filter(s => s > 0 && s < grenze);
-  const k = moeglich.length ? pick(moeglich) : grenze / 2;
-  const delta = k * (m.b + m.d);
+  const { k, delta } = verschiebeMarkt(sc, m, ev);
 
   let m2, neuP, neuQ, optIdx, funcText;
   if (ev.curve === 'N') {
@@ -999,6 +1008,409 @@ function makeRunde(stufe, anzahl = 5) {
 }
 
 /* ============================================================
+   4b. ZEICHENAUFGABEN – auf Papier zeichnen, dann mit der Lösung vergleichen
+   Jede Zeichenaufgabe:
+   { thema, typ, typName, sc, m, m2?, neu?, titel,
+     auftrag:[Absatz | 'FUNKTIONEN' | 'NACHFRAGE' | 'FUNKTION_NEU' | 'TABELLE'],
+     tabelle?, einzeichnen:[…], achsen?, hilfe:[…], schritte:[…], kriterien:[…], chart:{…} }
+   Die Achseneinteilung wird für kariertes Papier gewählt; die Musterlösung
+   verwendet genau dieselbe Einteilung, damit man direkt vergleichen kann.
+   ============================================================ */
+const glatt = (v) => fmt(v, Math.abs(v - Math.round(v)) < 1e-9 ? 0 : 2);
+const qdText = (m, strich = '') => `Qd${strich} = ${fmt(m.a)} − ${fmt(m.b)}·P`;
+const qsText = (m, strich = '') => `Qs${strich} = ${m.c < 0 ? '−' + fmt(-m.c) : fmt(m.c)} + ${fmt(m.d)}·P`;
+
+// Höchstens 12 cm je Achse und "glatte" Schritte (1, 2, 2,5 oder 5 mal Zehnerpotenz)
+function papierSkala(max) {
+  for (let e = -2; e <= 7; e++)
+    for (const f of [1, 2, 2.5, 5]) {
+      const step = f * Math.pow(10, e);
+      const n = Math.ceil(max * 1.02 / step - 1e-9);
+      if (n <= 12) return { step, max: n * step };
+    }
+  return niceScale(max, 10);
+}
+const papierAchsen = (maerkte, qExtra = 0) => ({
+  p: papierSkala(Math.max(...maerkte.map(prohibitiv))),
+  q: papierSkala(Math.max(qExtra, ...maerkte.map(x => x.a))),
+});
+const massstabText = (achsen, sc) => [
+  `Preisachse (senkrecht): 1 cm ≙ ${glatt(achsen.p.step)} €, von 0 bis ${glatt(achsen.p.max)} €`,
+  `Mengenachse (waagrecht): 1 cm ≙ ${glatt(achsen.q.step)} ${sc.qUnit}, von 0 bis ${glatt(achsen.q.max)} ${sc.qUnit}`,
+];
+// Zum Zeichnen taugen nur Märkte, deren Gleichgewicht im mittleren Bereich der Achsen liegt
+// und deren Angebot in der unteren Hälfte der Preisachse beginnt – sonst drängt sich die
+// ganze Zeichnung in eine Ecke des Blattes.
+function zeichenMarkt(sc) {
+  let bester = null, besteWertung = -Infinity;
+  for (let i = 0; i < 60; i++) {
+    const m = makeMarket(sc), k = marktKennzahlen(m);
+    const qRel = k.Q / m.a, sRel = k.pMinS / k.pMaxD;
+    if (qRel >= 0.28 && qRel <= 0.62 && sRel <= 0.5) return m;
+    const wertung = -Math.abs(qRel - 0.45) - Math.max(0, sRel - 0.5);
+    if (wertung > besteWertung) { bester = m; besteWertung = wertung; }
+  }
+  return bester;
+}
+
+const K_ACHSEN = 'Achsen richtig: Preis P senkrecht, Menge Q waagrecht – beide mit Einheit beschriftet';
+const K_MASSSTAB = 'Achsen gleichmäßig eingeteilt, Maßstab eingehalten';
+
+// Achsenpunkte der Kurven – die einfachste Art, eine Gerade zu zeichnen
+function achsenpunkte(m, achsen) {
+  const k = marktKennzahlen(m);
+  // zweiter Angebotspunkt: höchster Preis auf dem Raster, dessen Menge noch aufs Blatt passt
+  let p2 = null;
+  for (let v = achsen.p.max; v > k.pMinS + 1e-9; v -= achsen.p.step)
+    if (qs(m, v) <= achsen.q.max + 1e-9) { p2 = v; break; }
+  if (p2 == null) p2 = k.P;
+  return { ...k, p2, q2: qs(m, p2) };
+}
+const kurvenSchritte = (m, ap) => [
+  `Nachfrage: Qd = 0 → P = ${fmt(m.a)} : ${fmt(m.b)} = ${glatt(ap.pMaxD)} € (Prohibitivpreis). ` +
+    `P = 0 → Qd = ${fmt(m.a)} (Sättigungsmenge). Punkte (0 | ${glatt(ap.pMaxD)}) und (${fmt(m.a)} | 0) verbinden → N.`,
+  `Angebot: Qs = 0 → P = ${fmt(-m.c)} : ${fmt(m.d)} = ${glatt(ap.pMinS)} € (Mindestangebotspreis). ` +
+    `Bei P = ${glatt(ap.p2)} € ist Qs = ${glatt(ap.q2)}. Punkte (0 | ${glatt(ap.pMinS)}) und (${glatt(ap.q2)} | ${glatt(ap.p2)}) verbinden → A.`,
+];
+const ggSchritt = (m, sc) =>
+  `Gleichgewicht: Qd = Qs → ${fmt(m.a)} − ${fmt(m.b)}·P = ${m.c < 0 ? '−' + fmt(-m.c) : fmt(m.c)} + ${fmt(m.d)}·P ` +
+  `→ P* = ${glatt(m.a - m.c)} : ${glatt(m.b + m.d)} = ${glatt(marktKennzahlen(m).P)} €, Q* = ${glatt(marktKennzahlen(m).Q)} ${sc.qUnit}. Schnittpunkt markieren und an beiden Achsen ablesen.`;
+const achsenSchritt = (achsen, sc) =>
+  `Achsen anlegen: Preis P senkrecht, Menge Q waagrecht. ${massstabText(achsen, sc).join('; ')}.`;
+const punktHinweis = 'Ein Punkt im Diagramm hat die Form (Menge | Preis): erst waagrecht zur Menge, dann senkrecht zum Preis.';
+
+/* --- Thema 1a: aus einer Wertetabelle ------------------------ */
+function zeichneTabelle() {
+  for (let versuch = 0; versuch < 40; versuch++) {
+    const sc = pick(SCENARIOS), m = zeichenMarkt(sc);
+    const hs = [...sc.steps, ...sc.steps.map(x => 2 * x)]
+      .filter(h => m.P - 2 * h > 0 && qs(m, m.P - 2 * h) >= 0 && qd(m, m.P + 2 * h) >= 0);
+    if (!hs.length) continue;
+    const h = Math.max(...hs);
+    const tabelle = [-2, -1, 1, 2].map(i => ({ p: m.P + i * h, qd: qd(m, m.P + i * h), qs: qs(m, m.P + i * h) }));
+    const achsen = papierAchsen([m], Math.max(...tabelle.map(z => z.qs)));
+    const k = marktKennzahlen(m);
+    const punkte = (f) => tabelle.map(z => `(${fmt(z[f])} | ${glatt(z.p)})`).join(', ');
+    return {
+      thema:1, typ:'tabelle', typName:'Aus einer Wertetabelle', sc, m, tabelle, achsen,
+      titel:'Kurven aus einer Wertetabelle zeichnen',
+      auftrag:[
+        `Die Tabelle zeigt, welche Mengen an ${sc.name} bei verschiedenen Preisen nachgefragt und angeboten werden.`,
+        'TABELLE',
+        'Zeichne die Nachfrage- und die Angebotskurve in ein Preis-Mengen-Diagramm und bestimme das Marktgleichgewicht grafisch.',
+      ],
+      einzeichnen:['Nachfragekurve N', 'Angebotskurve A', 'Gleichgewichtspunkt mit P* und Q* an den Achsen'],
+      hilfe:[
+        punktHinweis,
+        'Trage zuerst alle Nachfragepunkte ein und verbinde sie mit dem Lineal, dann alle Angebotspunkte.',
+        `Das Gleichgewicht liegt zwischen ${glatt(m.P - h)} € und ${glatt(m.P + h)} € – dort kreuzen sich die beiden Geraden.`,
+      ],
+      schritte:[
+        achsenSchritt(achsen, sc),
+        `Nachfragepunkte (Q | P) eintragen: ${punkte('qd')} – mit dem Lineal zu einer fallenden Geraden verbinden → N.`,
+        `Angebotspunkte (Q | P) eintragen: ${punkte('qs')} – zu einer steigenden Geraden verbinden → A.`,
+        `Der Schnittpunkt von N und A ist das Marktgleichgewicht: P* = ${glatt(k.P)} €, Q* = ${glatt(k.Q)} ${sc.qUnit}.`,
+        `Probe: Qd = ${fmt(m.a)} − ${fmt(m.b)} · ${glatt(k.P)} = ${glatt(k.Q)} und Qs = ${m.c < 0 ? '−' + fmt(-m.c) : fmt(m.c)} + ${fmt(m.d)} · ${glatt(k.P)} = ${glatt(k.Q)}.`,
+      ],
+      kriterien:[
+        K_ACHSEN, K_MASSSTAB,
+        'Nachfragekurve fällt und läuft durch alle vier Nachfragepunkte',
+        'Angebotskurve steigt und läuft durch alle vier Angebotspunkte',
+        'Kurven mit N und A beschriftet',
+        `Gleichgewicht abgelesen: P* = ${glatt(k.P)} €, Q* = ${glatt(k.Q)} ${sc.qUnit}`,
+      ],
+      chart:{ m, achsen, zeichnung:true, showEq:true, marken:[
+        ...tabelle.map(z => ({ p: z.p, q: z.qd, farbe:'#2563EB' })),
+        ...tabelle.map(z => ({ p: z.p, q: z.qs, farbe:'#EF4444' })),
+      ] },
+    };
+  }
+  return zeichneFunktionen();
+}
+
+/* --- Thema 1b: aus den Funktionen ----------------------------- */
+function zeichneFunktionen() {
+  const sc = pick(SCENARIOS), m = zeichenMarkt(sc);
+  const achsen = papierAchsen([m]);
+  const ap = achsenpunkte(m, achsen);
+  return {
+    thema:1, typ:'funktionen', typName:'Aus den Funktionen', sc, m, achsen,
+    titel:'Angebot und Nachfrage aus den Funktionen zeichnen',
+    auftrag:[
+      `Auf dem Markt für ${sc.name} gelten folgende Funktionen (P in €, Q in ${sc.qUnit}):`,
+      'FUNKTIONEN',
+      'Zeichne die Nachfrage- und die Angebotskurve. Berechne das Marktgleichgewicht und trage es ein.',
+    ],
+    einzeichnen:['Nachfragekurve N', 'Angebotskurve A', 'Gleichgewichtspunkt mit P* und Q* an den Achsen'],
+    hilfe:[
+      'Für eine Gerade genügen zwei Punkte – am einfachsten die Schnittpunkte mit den Achsen.',
+      'Nachfrage: einmal Qd = 0 setzen (Punkt auf der Preisachse), einmal P = 0 (Punkt auf der Mengenachse).',
+      `Angebot: Qs = 0 setzen (Punkt auf der Preisachse). Als zweiten Punkt einen Preis einsetzen, z. B. P = ${glatt(ap.p2)} €.`,
+      punktHinweis,
+    ],
+    schritte:[ achsenSchritt(achsen, sc), ...kurvenSchritte(m, ap), ggSchritt(m, sc) ],
+    kriterien:[
+      K_ACHSEN, K_MASSSTAB,
+      `Nachfragekurve von (0 | ${glatt(ap.pMaxD)}) bis (${fmt(m.a)} | 0), beschriftet mit N`,
+      `Angebotskurve beginnt bei (0 | ${glatt(ap.pMinS)}) und steigt, beschriftet mit A`,
+      `Gleichgewicht P* = ${glatt(ap.P)} €, Q* = ${glatt(ap.Q)} ${sc.qUnit} eingetragen und abgelesen`,
+    ],
+    chart:{ m, achsen, zeichnung:true, showEq:true, marken:[
+      { p: ap.pMaxD, q: 0, farbe:'#2563EB' }, { p: 0, q: m.a, farbe:'#2563EB' },
+      { p: ap.pMinS, q: 0, farbe:'#EF4444' }, { p: ap.p2, q: ap.q2, farbe:'#EF4444' },
+    ] },
+  };
+}
+
+/* --- Thema 2: Renten einzeichnen ------------------------------ */
+function zeichneRenten() {
+  const sc = pick(SCENARIOS), m = zeichenMarkt(sc);
+  const achsen = papierAchsen([m]);
+  const ap = achsenpunkte(m, achsen);
+  return {
+    thema:2, typ:'renten', typName:'Renten einzeichnen', sc, m, achsen,
+    titel:'Konsumenten- und Produzentenrente einzeichnen',
+    auftrag:[
+      `Auf dem Markt für ${sc.name} gelten folgende Funktionen (P in €, Q in ${sc.qUnit}):`,
+      'FUNKTIONEN',
+      'Zeichne beide Kurven und das Gleichgewicht. Schraffiere die Konsumentenrente (KR) und die Produzentenrente (PR) in unterschiedlichen Farben und berechne beide Flächen.',
+    ],
+    einzeichnen:['Nachfragekurve N und Angebotskurve A', 'Gleichgewicht P* und Q*', 'Konsumentenrente KR', 'Produzentenrente PR'],
+    hilfe:[
+      'Beide Renten sind Dreiecke mit einer Ecke im Gleichgewichtspunkt.',
+      'Die KR liegt über dem Gleichgewichtspreis und unter der Nachfragekurve, die PR unter dem Gleichgewichtspreis und über der Angebotskurve.',
+      'Fläche eines Dreiecks: ½ · Grundseite · Höhe.',
+    ],
+    schritte:[
+      achsenSchritt(achsen, sc), ...kurvenSchritte(m, ap), ggSchritt(m, sc),
+      `KR = Dreieck mit den Ecken (0 | ${glatt(ap.P)}), (0 | ${glatt(ap.pMaxD)}) und (${glatt(ap.Q)} | ${glatt(ap.P)}): ` +
+        `½ · ${glatt(ap.Q)} · (${glatt(ap.pMaxD)} − ${glatt(ap.P)}) = ${eur(ap.KR)}`,
+      `PR = Dreieck mit den Ecken (0 | ${glatt(ap.pMinS)}), (0 | ${glatt(ap.P)}) und (${glatt(ap.Q)} | ${glatt(ap.P)}): ` +
+        `½ · ${glatt(ap.Q)} · (${glatt(ap.P)} − ${glatt(ap.pMinS)}) = ${eur(ap.PR)}`,
+    ],
+    kriterien:[
+      K_ACHSEN,
+      'Nachfrage- und Angebotskurve richtig, Gleichgewicht markiert',
+      'KR richtig: oberhalb von P*, unterhalb der Nachfragekurve',
+      'PR richtig: unterhalb von P*, oberhalb der Angebotskurve',
+      'Flächen farbig unterschieden und mit KR und PR beschriftet',
+      `Berechnet: KR = ${eur(ap.KR)}, PR = ${eur(ap.PR)}`,
+    ],
+    chart:{ m, achsen, zeichnung:true, showEq:true, showSurplus:true },
+  };
+}
+
+/* --- Thema 3a: Verschiebung mit Zahlen ------------------------ */
+const richtungsText = (ev) => `${ev.curve === 'N' ? 'Nachfragekurve' : 'Angebotskurve'} nach ${ev.dir}`;
+const wirkungText = (vor, nach) => ({
+  preis: nach.P > vor.P + 1e-9 ? 'steigt' : nach.P < vor.P - 1e-9 ? 'sinkt' : 'bleibt gleich',
+  menge: nach.Q > vor.Q + 1e-9 ? 'steigt' : nach.Q < vor.Q - 1e-9 ? 'sinkt' : 'bleibt gleich',
+});
+
+function zeichneVerschiebung() {
+  const sc = pick(SCENARIOS), m = zeichenMarkt(sc), ev = pick(SHIFT_EVENTS);
+  const { m2, delta } = verschiebeMarkt(sc, m, ev);
+  const achsen = papierAchsen([m, m2]);
+  const k0 = marktKennzahlen(m), k1 = marktKennzahlen(m2), w = wirkungText(k0, k1);
+  const nachfrage = ev.curve === 'N';
+  const neueFunktion = nachfrage ? qdText(m2, '′') : qsText(m2, '′');
+  const neuerPunkt = nachfrage
+    ? `Prohibitivpreis ${glatt(k1.pMaxD)} €, Sättigungsmenge ${fmt(m2.a)} ${sc.qUnit}`
+    : `Mindestangebotspreis ${glatt(k1.pMinS)} €`;
+  return {
+    thema:3, typ:'verschiebung', typName:'Verschiebung mit Zahlen', sc, m, m2, achsen,
+    neu:{ kind: nachfrage ? 'd' : 's', m: m2 },
+    titel:'Eine Marktveränderung einzeichnen',
+    auftrag:[
+      'Ausgangslage – gegeben sind die Funktionen:',
+      'FUNKTIONEN',
+      `Ereignis: ${ev.t(sc)}`,
+      `Bei jedem Preis wird ${nachfrage ? 'die nachgefragte' : 'die angebotene'} Menge um ${fmt(delta)} ${sc.qUnit} ${ev.dir === 'rechts' ? 'größer' : 'kleiner'}. Neue Funktion:`,
+      'FUNKTION_NEU',
+      'Zeichne die Ausgangslage (N₀, A₀) und die neue Kurve in dasselbe Diagramm. Markiere das alte und das neue Gleichgewicht und kennzeichne die Verschiebung mit einem Pfeil.',
+    ],
+    einzeichnen:['Ausgangslage N₀ und A₀', `neue ${nachfrage ? 'Nachfragekurve N₁' : 'Angebotskurve A₁'}`, 'altes und neues Gleichgewicht', 'Pfeil für die Verschiebung'],
+    hilfe:[
+      'Zeichne die Ausgangslage zuerst vollständig, dann erst die neue Kurve.',
+      'Nur eine Kurve ändert sich. Die neue Kurve hat dieselbe Steigung – sie liegt parallel zur alten.',
+      `Achsenpunkt der neuen Kurve: ${neuerPunkt}.`,
+    ],
+    schritte:[
+      achsenSchritt(achsen, sc),
+      `Ausgangslage wie gewohnt zeichnen (N₀, A₀). Gleichgewicht: P₀ = ${glatt(k0.P)} €, Q₀ = ${glatt(k0.Q)} ${sc.qUnit}.`,
+      ev.why,
+      `Neue Kurve ${neueFunktion}: ${neuerPunkt}. Sie verläuft parallel zur alten Kurve.`,
+      `Neues Gleichgewicht: P₁ = ${glatt(k1.P)} €, Q₁ = ${glatt(k1.Q)} ${sc.qUnit}.`,
+      `Ergebnis: Der Preis ${w.preis}, die Menge ${w.menge}.`,
+    ],
+    kriterien:[
+      K_ACHSEN,
+      'Ausgangslage N₀ und A₀ richtig gezeichnet',
+      `Richtige Kurve in die richtige Richtung verschoben: ${richtungsText(ev)}`,
+      'Neue Kurve parallel zur alten (gleiche Steigung)',
+      `Gleichgewichte markiert: P₀ = ${glatt(k0.P)} / Q₀ = ${glatt(k0.Q)} und P₁ = ${glatt(k1.P)} / Q₁ = ${glatt(k1.Q)}`,
+      'Verschiebung mit einem Pfeil gekennzeichnet',
+    ],
+    chart:{ m: m2, compare: m, achsen, zeichnung:true, showEq:true, verschiebung:true },
+  };
+}
+
+/* --- Thema 3b: qualitative Skizze ohne Zahlen ------------------ */
+function zeichneSkizze() {
+  const sc = pick(SCENARIOS), m = zeichenMarkt(sc), ev = pick(SHIFT_EVENTS);
+  const { m2 } = verschiebeMarkt(sc, m, ev, true);
+  const achsen = papierAchsen([m, m2]);
+  const w = wirkungText(marktKennzahlen(m), marktKennzahlen(m2));
+  return {
+    thema:3, typ:'skizze', typName:'Skizze ohne Zahlen', sc, m, m2,
+    titel:'Eine Marktveränderung skizzieren',
+    auftrag:[
+      `Ereignis auf dem Markt für ${sc.name}: ${ev.t(sc)}`,
+      'Skizziere ohne Zahlen, wie sich das Ereignis im Preis-Mengen-Diagramm auswirkt (ceteris paribus). Zeichne die Ausgangslage, die Verschiebung und das neue Gleichgewicht. Wie verändern sich Gleichgewichtspreis und -menge?',
+    ],
+    einzeichnen:['Ausgangslage N₀ und A₀ mit P₀ und Q₀', 'die verschobene Kurve mit Pfeil', 'neues Gleichgewicht mit P₁ und Q₁'],
+    hilfe:[
+      'Frage dich zuerst: Betrifft das Ereignis die Käufer (Nachfrage) oder die Hersteller (Angebot)?',
+      'Der Preis des Gutes selbst hat sich nicht geändert – es verschiebt sich also die ganze Kurve, nicht nur ein Punkt auf ihr.',
+      'Rechts heißt: bei jedem Preis mehr Menge. Links heißt: bei jedem Preis weniger Menge.',
+    ],
+    schritte:[
+      'Achsen zeichnen und beschriften: Preis P senkrecht, Menge Q waagrecht. Zahlen sind nicht nötig.',
+      'Ausgangslage skizzieren: fallende Nachfragekurve N₀, steigende Angebotskurve A₀. Schnittpunkt mit P₀ und Q₀ an den Achsen markieren.',
+      ev.why,
+      `Die ${richtungsText(ev)} parallel verschieben und als ${ev.curve === 'N' ? 'N₁' : 'A₁'} beschriften; Pfeil einzeichnen.`,
+      'Neuen Schnittpunkt markieren und P₁ und Q₁ an den Achsen eintragen.',
+      `Ergebnis: Der Gleichgewichtspreis ${w.preis}, die Gleichgewichtsmenge ${w.menge}.`,
+    ],
+    kriterien:[
+      'Achsen beschriftet: P senkrecht, Q waagrecht',
+      'Ausgangslage: fallende N₀ und steigende A₀',
+      `Richtige Kurve verschoben: ${richtungsText(ev)}`,
+      'Parallel verschoben – die Steigung bleibt gleich',
+      'Altes und neues Gleichgewicht mit P₀/Q₀ und P₁/Q₁ markiert',
+      `Wirkung erkannt: Preis ${w.preis}, Menge ${w.menge}`,
+    ],
+    chart:{ m: m2, compare: m, achsen, zeichnung:true, ohneZahlen:true, showEq:true, verschiebung:true },
+  };
+}
+
+/* --- Thema 4: Höchst- oder Mindestpreis ------------------------ */
+function zeichneEingriff() {
+  const sc = pick(SCENARIOS), m = zeichenMarkt(sc);
+  const hoechst = Math.random() < 0.5;
+  const grenze = hoechst ? m.kd : m.kb;
+  const moeglich = sc.steps.filter(x => x > 0 && x < grenze);
+  const k = moeglich.length ? Math.max(...moeglich) : grenze / 2;
+  const Pfix = hoechst ? m.P - k : m.P + k;
+  const nach = qd(m, Pfix), ang = qs(m, Pfix), ueber = Math.abs(nach - ang);
+  const achsen = papierAchsen([m], ang);
+  const ap = achsenpunkte(m, achsen);
+  const art = hoechst ? 'Höchstpreis' : 'Mindestpreis';
+  const zustand = hoechst ? 'Nachfrageüberhang (Mangel)' : 'Angebotsüberhang (Überschuss)';
+  return {
+    thema:4, typ:'eingriff', typName: art, sc, m, achsen,
+    titel:`${art} einzeichnen`,
+    auftrag:[
+      `Auf dem Markt für ${sc.name} gelten folgende Funktionen (P in €, Q in ${sc.qUnit}):`,
+      'FUNKTIONEN',
+      hoechst
+        ? `Der Staat legt zum Schutz der Verbraucher einen Höchstpreis von ${eur(Pfix)} fest.`
+        : `Der Staat legt zum Schutz der Anbieter einen Mindestpreis von ${eur(Pfix)} fest.`,
+      `Zeichne Angebot, Nachfrage und das freie Gleichgewicht. Trage den ${art} als waagrechte Linie ein, markiere die nachgefragte und die angebotene Menge zu diesem Preis und kennzeichne den ${zustand}.`,
+    ],
+    einzeichnen:['Nachfragekurve N und Angebotskurve A', 'freies Gleichgewicht', `${art}linie`, `Qd und Qs beim ${art} und den ${zustand.split(' ')[0]}`],
+    hilfe:[
+      hoechst ? 'Ein wirksamer Höchstpreis liegt unter dem Gleichgewichtspreis.' : 'Ein wirksamer Mindestpreis liegt über dem Gleichgewichtspreis.',
+      `Setze ${eur(Pfix)} in beide Funktionen ein – so erhältst du die beiden Mengen auf der Preislinie.`,
+      'Der Überhang ist die waagrechte Strecke zwischen den beiden Mengen.',
+    ],
+    schritte:[
+      achsenSchritt(achsen, sc), ...kurvenSchritte(m, ap), ggSchritt(m, sc),
+      `${art}: waagrechte Linie bei P = ${glatt(Pfix)} € – ${hoechst ? 'unterhalb' : 'oberhalb'} von P* = ${glatt(ap.P)} €.`,
+      `Qd(${glatt(Pfix)}) = ${glatt(nach)} ${sc.qUnit} und Qs(${glatt(Pfix)}) = ${glatt(ang)} ${sc.qUnit} auf der Linie markieren.`,
+      `Die Strecke dazwischen ist der ${zustand}: ${glatt(ueber)} ${sc.qUnit}. Gehandelt wird nur die kleinere Menge (${glatt(Math.min(nach, ang))} ${sc.qUnit}).`,
+    ],
+    kriterien:[
+      K_ACHSEN, K_MASSSTAB,
+      'Nachfrage- und Angebotskurve richtig, freies Gleichgewicht markiert',
+      `${art}linie waagrecht bei ${glatt(Pfix)} € und ${hoechst ? 'unterhalb' : 'oberhalb'} von P*`,
+      `Mengen markiert: Qd = ${glatt(nach)}, Qs = ${glatt(ang)}`,
+      `${zustand} von ${glatt(ueber)} ${sc.qUnit} gekennzeichnet und benannt`,
+    ],
+    chart:{ m, achsen, zeichnung:true, showEq:true, priceLine:Pfix, gapLabel:true,
+            priceLineLabel: art },
+  };
+}
+
+/* --- Thema 5: Preiselastizität an der Nachfragekurve ----------- */
+function zeichneElastizitaet() {
+  const sc = pick(SCENARIOS), m = zeichenMarkt(sc);
+  // Beim Zeichnen muss die Preisänderung sichtbar sein: mindestens gut 1 cm auf der Preisachse
+  const pAchse = papierSkala(prohibitiv(m));
+  const kombis = [];
+  for (const p1 of [m.P, m.P - Math.min(...sc.steps), m.P + Math.min(...sc.steps)])
+    for (const k of [...new Set(sc.steps.flatMap(x => [x, 2 * x, 3 * x, 4 * x]))])
+      if (p1 > 0 && qd(m, p1) > 0.25 * m.Q && qd(m, p1 + k) > 0.2 * m.Q) kombis.push([p1, k]);
+  const deutlich = kombis.filter(([, k]) => k >= 1.2 * pAchse.step);
+  const [P1, k] = deutlich.length ? pick(deutlich)
+    : kombis.length ? kombis.reduce((x, y) => (y[1] > x[1] ? y : x)) : [m.P, m.kb / 4];
+  const P2 = P1 + k, Q1 = qd(m, P1), Q2 = qd(m, P2);
+  const eps = ((Q2 - Q1) / Q1) / ((P2 - P1) / P1), abs = Math.abs(eps);
+  const urteil = abs > 1.0001 ? 'elastisch (|ε| > 1)' : abs < 0.9999 ? 'unelastisch (|ε| < 1)' : 'einheitselastisch (|ε| = 1)';
+  const achsen = { p: papierSkala(prohibitiv(m)), q: papierSkala(m.a) };
+  return {
+    thema:5, typ:'elastizitaet', typName:'Elastizität', sc, m, achsen,
+    titel:'Eine Preisänderung an der Nachfragekurve einzeichnen',
+    auftrag:[
+      `Die Nachfrage nach ${sc.name} lautet (P in €, Q in ${sc.qUnit}):`,
+      'NACHFRAGE',
+      `Der Preis steigt von P₁ = ${eur(P1)} auf P₂ = ${eur(P2)}.`,
+      'Zeichne die Nachfragekurve. Trage beide Preis-Mengen-Kombinationen ein, kennzeichne ΔP an der Preisachse und ΔQ an der Mengenachse und berechne die Preiselastizität der Nachfrage.',
+    ],
+    einzeichnen:['Nachfragekurve N', 'Punkte (Q₁ | P₁) und (Q₂ | P₂)', 'ΔP und ΔQ an den Achsen'],
+    hilfe:[
+      'Die Angebotskurve brauchst du hier nicht.',
+      'Setze P₁ und P₂ in die Nachfragefunktion ein, um Q₁ und Q₂ zu erhalten.',
+      'ε = (ΔQ : Q₁) : (ΔP : P₁)',
+    ],
+    schritte:[
+      achsenSchritt(achsen, sc),
+      `Nachfragekurve: Punkte (0 | ${glatt(prohibitiv(m))}) und (${fmt(m.a)} | 0) verbinden → N.`,
+      `Q₁ = ${fmt(m.a)} − ${fmt(m.b)} · ${glatt(P1)} = ${glatt(Q1)} und Q₂ = ${fmt(m.a)} − ${fmt(m.b)} · ${glatt(P2)} = ${glatt(Q2)}. Punkte (${glatt(Q1)} | ${glatt(P1)}) und (${glatt(Q2)} | ${glatt(P2)}) eintragen.`,
+      `ΔP = ${glatt(P2 - P1)} € an der Preisachse, ΔQ = ${glatt(Q2 - Q1)} ${sc.qUnit} an der Mengenachse markieren.`,
+      `ε = (${glatt(Q2 - Q1)} : ${glatt(Q1)}) : (${glatt(P2 - P1)} : ${glatt(P1)}) = ${fmt(eps, 2)}`,
+      `|ε| = ${fmt(abs, 2)} → die Nachfrage ist hier ${urteil}.`,
+    ],
+    kriterien:[
+      K_ACHSEN, K_MASSSTAB,
+      `Nachfragekurve von (0 | ${glatt(prohibitiv(m))}) bis (${fmt(m.a)} | 0)`,
+      `Punkte (${glatt(Q1)} | ${glatt(P1)}) und (${glatt(Q2)} | ${glatt(P2)}) richtig eingetragen`,
+      'ΔP und ΔQ an den Achsen gekennzeichnet',
+      `ε = ${fmt(eps, 2)} berechnet – Nachfrage ${urteil}`,
+    ],
+    chart:{ m, achsen, zeichnung:true, nurNachfrage:true, showEq:false,
+      points:[ { p:P1, q:Q1, label:'(Q₁ | P₁)', color:'#7C3AED' }, { p:P2, q:Q2, label:'(Q₂ | P₂)', color:'#DB2777' } ],
+      delta:{ p1:P1, p2:P2, q1:Q1, q2:Q2 } },
+  };
+}
+
+const ZEICHEN_TYPEN = [
+  { typ:'tabelle',      thema:1, gen:zeichneTabelle },
+  { typ:'funktionen',   thema:1, gen:zeichneFunktionen },
+  { typ:'renten',       thema:2, gen:zeichneRenten },
+  { typ:'verschiebung', thema:3, gen:zeichneVerschiebung },
+  { typ:'skizze',       thema:3, gen:zeichneSkizze },
+  { typ:'eingriff',     thema:4, gen:zeichneEingriff },
+  { typ:'elastizitaet', thema:5, gen:zeichneElastizitaet },
+];
+// thema 0 = gemischt. Nach Möglichkeit nicht zweimal hintereinander derselbe Aufgabentyp.
+function makeZeichnung(thema, vorherTyp) {
+  const kand = ZEICHEN_TYPEN.filter(z => thema === 0 || z.thema === thema);
+  const frisch = kand.filter(z => z.typ !== vorherTyp);
+  return pick(frisch.length ? frisch : kand).gen();
+}
+
+/* ============================================================
    5. DIAGRAMM (SVG, reagiert auf jede Änderung)
    ============================================================ */
 function niceScale(max, teile = 5) {
@@ -1037,8 +1449,18 @@ function useKompakt() {
   return k;
 }
 
+/* Zusätzliche Möglichkeiten für Musterlösungen der Zeichenübung:
+   achsen      – feste Achseneinteilung { p:{step,max}, q:{step,max} } passend zum Papier
+   zeichnung   – Lösungsmodus: Kurven beschriftet (N, A, N₀/N₁ …), Werte am Gleichgewicht,
+                 KR/PR beschriftet, keine Zierpunkte auf den Kurven
+   ohneZahlen  – qualitative Skizze: keine Zahlen an den Achsen
+   marken      – einzelne Punkte, z. B. aus einer Wertetabelle { p, q, farbe, label }
+   nurNachfrage– nur die Nachfragekurve (Elastizität)
+   delta       – ΔP und ΔQ an den Achsen markieren { p1, p2, q1, q2 }
+   priceLineLabel – eigene Beschriftung der waagrechten Preislinie */
 function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points, gapLabel, sc, titel,
-                      kompakt, linien, rechteck, mini, verschiebung }) {
+                      kompakt, linien, rechteck, mini, verschiebung,
+                      achsen, zeichnung, ohneZahlen, marken, nurNachfrage, delta, priceLineLabel }) {
   const [wrapRef, breite] = useBreite();
   // Schmale Container bekommen einen kleineren Zeichenbereich, damit Schrift
   // und Punkte im Verhältnis größer und damit lesbar bleiben.
@@ -1052,14 +1474,18 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
   const ms = [m, compare].filter(Boolean);
 
   const teile = mini ? 2 : (schmal ? 4 : 5);
-  const pS = niceScale(Math.max(...ms.map(x => prohibitiv(x))) * 1.06, teile);
-  const qS = niceScale(Math.max(...ms.map(x => x.a)) * 1.06, teile);
+  const pS = achsen ? achsen.p : niceScale(Math.max(...ms.map(x => prohibitiv(x))) * 1.06, teile);
+  const qS = achsen ? achsen.q : niceScale(Math.max(...ms.map(x => x.a)) * 1.06, teile);
   const pMax = pS.max, qMax = qS.max;
   const X = (q) => pad.l + clamp(q / qMax, 0, 1.2) * iw;
   const Y = (p) => pad.t + ih - clamp(p / pMax, 0, 1.2) * ih;
 
   const k = marktKennzahlen(m);
-  const pDec = pMax <= 20 ? 0 : 0;
+  const stellen = (step) => Math.abs(step - Math.round(step)) < 1e-9 ? 0
+    : Math.abs(step * 10 - Math.round(step * 10)) < 1e-9 ? 1 : 2;
+  const pDec = stellen(pS.step), qDec = stellen(qS.step);
+  const nachfrageVerschoben = !!compare && Math.abs(compare.a - m.a) > 1e-9;
+  const angebotVerschoben = !!compare && Math.abs(compare.c - m.c) > 1e-9;
 
   const curves = (mk, solid) => {
     const dTop = prohibitiv(mk), dStart = { q: 0, p: dTop }, dEnd = { q: mk.a, p: 0 };
@@ -1070,6 +1496,9 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
   };
   const main = curves(m, true);
   const old = compare ? curves(compare, false) : null;
+  // Wo auf den Geraden die Kurvennamen stehen (Anteil vom Anfang bis zum Ende der Linie)
+  const T_N = 0.86, T_N0 = 0.72, T_A = 0.93, T_A0 = 0.76;
+  const preisBei = (k, f) => k.p0 + (k.p1 - k.p0) * f;
 
   const dotsOn = (A, B, n = 7) => Array.from({ length: n }, (_, i) => {
     const t = i / (n - 1);
@@ -1080,6 +1509,11 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
   for (let v = 0; v <= pMax + 1e-9; v += pS.step) pTicks.push(v);
   for (let v = 0; v <= qMax + 1e-9; v += qS.step) qTicks.push(v);
 
+  // Bei feiner Einteilung (Zeichenübung) nur jede zweite Zahl schreiben, sonst überlappen sie
+  const pJede = pTicks.length > (schmal ? 8 : 12) ? 2 : 1;
+  const qJede = qTicks.length > (schmal ? 6 : 9) ? 2 : 1;
+  const zeigeEq = showEq && !nurNachfrage;
+
   const plQd = priceLine != null ? qd(m, priceLine) : null;
   const plQs = priceLine != null ? qs(m, priceLine) : null;
 
@@ -1088,8 +1522,8 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
       {titel && <div className="text-center pixel text-[13px] sm:text-sm font-bold text-slate-700 mb-1">{titel}</div>}
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto block" role="img" aria-label="Angebots- und Nachfragediagramm">
         {/* Gitternetz */}
-        {pTicks.map((v, i) => <line key={'gp'+i} x1={pad.l} x2={pad.l+iw} y1={Y(v)} y2={Y(v)} stroke="#F1EDE1" strokeWidth="1" />)}
-        {qTicks.map((v, i) => <line key={'gq'+i} x1={X(v)} x2={X(v)} y1={pad.t} y2={pad.t+ih} stroke="#F1EDE1" strokeWidth="1" />)}
+        {!ohneZahlen && pTicks.map((v, i) => <line key={'gp'+i} x1={pad.l} x2={pad.l+iw} y1={Y(v)} y2={Y(v)} stroke="#F1EDE1" strokeWidth="1" />)}
+        {!ohneZahlen && qTicks.map((v, i) => <line key={'gq'+i} x1={X(v)} x2={X(v)} y1={pad.t} y2={pad.t+ih} stroke="#F1EDE1" strokeWidth="1" />)}
 
         {/* Renten-Flächen */}
         {showSurplus && (
@@ -1106,41 +1540,64 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
           <g className="drawin">
             <line x1={X(old.dStart.q)} y1={Y(old.dStart.p)} x2={X(old.dEnd.q)} y2={Y(old.dEnd.p)}
                   stroke="#93C5FD" strokeWidth="2.5" strokeDasharray="7 5" />
-            <line x1={X(old.sStart.q)} y1={Y(old.sStart.p)} x2={X(old.sEnd.q)} y2={Y(old.sEnd.p)}
-                  stroke="#FCA5A5" strokeWidth="2.5" strokeDasharray="7 5" />
-            {(() => { const ko = marktKennzahlen(compare); return (
+            {!nurNachfrage && <line x1={X(old.sStart.q)} y1={Y(old.sStart.p)} x2={X(old.sEnd.q)} y2={Y(old.sEnd.p)}
+                  stroke="#FCA5A5" strokeWidth="2.5" strokeDasharray="7 5" />}
+            {zeigeEq && (() => { const ko = marktKennzahlen(compare); return (
               <circle cx={X(ko.Q)} cy={Y(ko.P)} r="6" fill="#fff" stroke="#9CA3AF" strokeWidth="2.5" />
             ); })()}
           </g>
         )}
 
-        {/* Pfeil, der die Verschiebung der Nachfragekurve zeigt */}
+        {/* Pfeile, die die Verschiebung von Nachfrage- bzw. Angebotskurve zeigen */}
         {verschiebung && compare && !mini && (() => {
-          const pRef = pMax * 0.62;
-          const qAlt = qd(compare, pRef), qNeu = qd(m, pRef);
-          if (Math.abs(qNeu - qAlt) < qMax * 0.02 || qAlt < 0 || qNeu < 0) return null;
-          const rechts = qNeu > qAlt, y = Y(pRef);
-          return (
-            <g className="drawin">
-              <line x1={X(qAlt)} y1={y} x2={X(qNeu)} y2={y} stroke="#1D4ED8" strokeWidth="2.5" />
-              <polygon points={`${X(qNeu)},${y} ${X(qNeu) + (rechts ? -9 : 9)},${y - 5} ${X(qNeu) + (rechts ? -9 : 9)},${y + 5}`} fill="#1D4ED8" />
-              <text x={(X(qAlt) + X(qNeu)) / 2} y={y - 9} fontSize={FSL} fontWeight="700"
-                    textAnchor="middle" fill="#1D4ED8">Nachfrage {rechts ? 'steigt' : 'sinkt'}</text>
-            </g>
-          );
+          // Im Lösungsmodus die Pfeilhöhe so wählen, dass sie möglichst weit von den Gleichgewichten
+          // und den Kurvennamen entfernt ist. Im Simulator bleibt die gewohnte Höhe.
+          const sperr = [eqPrice(m), eqPrice(compare)];
+          if (zeichnung) {
+            const linie = (c, f) => preisBei({ p0: c.p0, p1: c.p1 }, f);
+            sperr.push(linie({ p0: main.dStart.p, p1: main.dEnd.p }, T_N), linie({ p0: old.dStart.p, p1: old.dEnd.p }, T_N0));
+            if (!nurNachfrage) sperr.push(linie({ p0: main.sStart.p, p1: main.sEnd.p }, T_A), linie({ p0: old.sStart.p, p1: old.sEnd.p }, T_A0));
+          }
+          const hoehen = zeichnung ? [0.9, 0.8, 0.7, 0.62, 0.55, 0.45, 0.35, 0.25] : null;
+          return [
+            { an: nachfrageVerschoben, f: qd, farbe: '#1D4ED8', wort: 'Nachfrage', hoehen: hoehen || [0.62, 0.45, 0.78, 0.3] },
+            { an: angebotVerschoben && !nurNachfrage, f: qs, farbe: '#B91C1C', wort: 'Angebot', hoehen: hoehen || [0.62, 0.78, 0.45, 0.88] },
+          ].map(v => {
+            if (!v.an) return null;
+            const innen = (q) => q >= qMax * 0.04 && q <= qMax * 0.96;
+            const gueltig = v.hoehen.filter(f => innen(v.f(compare, pMax * f)) && innen(v.f(m, pMax * f)));
+            const abstand = (f) => Math.min(...sperr.map(x => Math.abs(pMax * f - x)));
+            const h = zeichnung ? gueltig.slice().sort((x, y) => abstand(y) - abstand(x))[0] : gueltig[0];
+            if (h == null) return null;
+            const pRef = pMax * h, qAlt = v.f(compare, pRef), qNeu = v.f(m, pRef);
+            if (Math.abs(qNeu - qAlt) < qMax * 0.02) return null;
+            const rechts = qNeu > qAlt, y = Y(pRef);
+            return (
+              <g key={v.wort} className="drawin">
+                <line x1={X(qAlt)} y1={y} x2={X(qNeu)} y2={y} stroke={v.farbe} strokeWidth="2.5" />
+                <polygon points={`${X(qNeu)},${y} ${X(qNeu) + (rechts ? -9 : 9)},${y - 5} ${X(qNeu) + (rechts ? -9 : 9)},${y + 5}`} fill={v.farbe} />
+                <text x={(X(qAlt) + X(qNeu)) / 2} y={y - 9} fontSize={FSL} fontWeight="700" textAnchor="middle" fill={v.farbe}
+                      paintOrder="stroke" stroke="#fff" strokeWidth="3">{v.wort} {rechts ? 'steigt' : 'sinkt'}</text>
+              </g>
+            );
+          });
         })()}
 
         {/* Höchst-/Mindestpreis-Linie */}
         {priceLine != null && (
           <g>
             <line x1={pad.l} x2={pad.l+iw} y1={Y(priceLine)} y2={Y(priceLine)} stroke="#7C3AED" strokeWidth="2.5" strokeDasharray="8 4" />
-            <text x={pad.l+4} y={Y(priceLine)-7} fontSize={FSL} fontWeight="700" fill="#7C3AED">P = {fmt(priceLine,2)} €</text>
+            {priceLineLabel
+              ? <text x={pad.l+iw-2} y={Y(priceLine)-8} fontSize={FSL} fontWeight="800" textAnchor="end" fill="#6D28D9"
+                      paintOrder="stroke" stroke="#fff" strokeWidth="3.5">{priceLineLabel}</text>
+              : <text x={pad.l+4} y={Y(priceLine)-7} fontSize={FSL} fontWeight="700" fill="#7C3AED">P = {fmt(priceLine,2)} €</text>}
             <line x1={X(Math.min(plQd,plQs))} x2={X(Math.max(plQd,plQs))} y1={Y(priceLine)} y2={Y(priceLine)}
                   stroke="#7C3AED" strokeWidth="7" strokeOpacity="0.28" strokeLinecap="round" />
             <circle cx={X(plQd)} cy={Y(priceLine)} r="5.5" fill="#2563EB" stroke="#fff" strokeWidth="2" />
             <circle cx={X(plQs)} cy={Y(priceLine)} r="5.5" fill="#EF4444" stroke="#fff" strokeWidth="2" />
             {gapLabel && Math.abs(plQd - plQs) > 0.001 && (
-              <text x={X((plQd+plQs)/2)} y={Y(priceLine)+20} fontSize={FSL} fontWeight="700" textAnchor="middle" fill="#6D28D9">
+              <text x={X((plQd+plQs)/2)} y={Y(priceLine)+20} fontSize={FSL} fontWeight="700" textAnchor="middle" fill="#6D28D9"
+                    paintOrder="stroke" stroke="#fff" strokeWidth="3">
                 {plQd > plQs ? 'Mangel' : 'Überschuss'}: {fmt(Math.abs(plQd-plQs))}
               </text>
             )}
@@ -1149,12 +1606,12 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
 
         {/* Angebot & Nachfrage */}
         <line x1={X(main.dStart.q)} y1={Y(main.dStart.p)} x2={X(main.dEnd.q)} y2={Y(main.dEnd.p)} stroke="#2563EB" strokeWidth="3.5" strokeLinecap="round" />
-        <line x1={X(main.sStart.q)} y1={Y(main.sStart.p)} x2={X(main.sEnd.q)} y2={Y(main.sEnd.p)} stroke="#EF4444" strokeWidth="3.5" strokeLinecap="round" />
-        {dotsOn(main.dStart, main.dEnd).map((p, i) => <circle key={'dd'+i} cx={p.x} cy={p.y} r="3.6" fill="#2563EB" />)}
-        {dotsOn(main.sStart, main.sEnd).map((p, i) => <circle key={'sd'+i} cx={p.x} cy={p.y} r="3.6" fill="#EF4444" />)}
+        {!nurNachfrage && <line x1={X(main.sStart.q)} y1={Y(main.sStart.p)} x2={X(main.sEnd.q)} y2={Y(main.sEnd.p)} stroke="#EF4444" strokeWidth="3.5" strokeLinecap="round" />}
+        {!zeichnung && dotsOn(main.dStart, main.dEnd).map((p, i) => <circle key={'dd'+i} cx={p.x} cy={p.y} r="3.6" fill="#2563EB" />)}
+        {!zeichnung && !nurNachfrage && dotsOn(main.sStart, main.sEnd).map((p, i) => <circle key={'sd'+i} cx={p.x} cy={p.y} r="3.6" fill="#EF4444" />)}
 
         {/* Gleichgewicht */}
-        {showEq && k.P > 0 && k.Q > 0 && (
+        {zeigeEq && k.P > 0 && k.Q > 0 && (
           <g className="pop">
             <line x1={X(k.Q)} y1={Y(k.P)} x2={X(k.Q)} y2={Y(0)} stroke="#64748B" strokeWidth="1.6" strokeDasharray="5 4" />
             <line x1={X(k.Q)} y1={Y(k.P)} x2={X(0)} y2={Y(k.P)} stroke="#64748B" strokeWidth="1.6" strokeDasharray="5 4" />
@@ -1198,19 +1655,103 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
             <line x1={X(pt.q)} y1={Y(pt.p)} x2={X(pt.q)} y2={Y(0)} stroke={pt.color} strokeWidth="1.4" strokeDasharray="4 4" />
             <line x1={X(pt.q)} y1={Y(pt.p)} x2={X(0)} y2={Y(pt.p)} stroke={pt.color} strokeWidth="1.4" strokeDasharray="4 4" />
             <circle cx={X(pt.q)} cy={Y(pt.p)} r="7" fill={pt.color} stroke="#fff" strokeWidth="2" />
-            <text x={X(pt.q)+11} y={Y(pt.p) + (pt.unten ? 18 : -9)} fontSize={FSL} fontWeight="800" fill={pt.color}>{pt.label}</text>
+            <text x={X(pt.q)+11} y={Y(pt.p) + (pt.unten ? 18 : -9)} fontSize={FSL} fontWeight="800" fill={pt.color}
+                  paintOrder="stroke" stroke="#fff" strokeWidth="3">{pt.label}</text>
           </g>
         ))}
+
+        {/* einzelne Punkte, z. B. aus einer Wertetabelle */}
+        {(marken || []).map((mk, i) => (
+          <g key={'mk'+i}>
+            <circle cx={X(mk.q)} cy={Y(mk.p)} r="5.5" fill={mk.farbe} stroke="#fff" strokeWidth="2" />
+            {mk.label && (
+              <text x={X(mk.q) + (mk.links ? -9 : 9)} y={Y(mk.p) + (mk.unten ? 17 : -8)} fontSize={FS} fontWeight="700"
+                    textAnchor={mk.links ? 'end' : 'start'} fill={mk.farbe}
+                    paintOrder="stroke" stroke="#fff" strokeWidth="3">{mk.label}</text>
+            )}
+          </g>
+        ))}
+
+        {/* ΔP und ΔQ an den Achsen (Elastizität) */}
+        {delta && (() => {
+          const yA = Y(delta.p1), yB = Y(delta.p2), xA = X(delta.q1), xB = X(delta.q2);
+          return (
+            <g>
+              <line x1={pad.l + 4} x2={pad.l + 4} y1={yA} y2={yB} stroke="#7C3AED" strokeWidth="6" strokeLinecap="round" />
+              <text x={pad.l + 13} y={(yA + yB) / 2 + 5} fontSize={FSL} fontWeight="800" fill="#7C3AED"
+                    paintOrder="stroke" stroke="#fff" strokeWidth="3">ΔP</text>
+              <line x1={xA} x2={xB} y1={Y(0) - 4} y2={Y(0) - 4} stroke="#DB2777" strokeWidth="6" strokeLinecap="round" />
+              <text x={(xA + xB) / 2} y={Y(0) - 13} fontSize={FSL} fontWeight="800" textAnchor="middle" fill="#DB2777"
+                    paintOrder="stroke" stroke="#fff" strokeWidth="3">ΔQ</text>
+            </g>
+          );
+        })()}
+
+        {/* Lösungsmodus: Beschriftungen wie in einer Heftzeichnung */}
+        {zeichnung && (() => {
+          const teile = [];
+          const zahl = (v) => fmt(v, Math.abs(v - Math.round(v)) < 1e-9 ? 0 : 2);
+          const amPunkt = (A, B, f) => ({ q: A.q + (B.q - A.q) * f, p: A.p + (B.p - A.p) * f });
+          const text = (key, x, y, inhalt, farbe, anker = 'start', gross = true) => (
+            <text key={key} x={x} y={y} fontSize={gross ? FSL + 2 : FS} fontWeight="800" textAnchor={anker}
+                  fill={farbe} paintOrder="stroke" stroke="#fff" strokeWidth="3.5">{inhalt}</text>);
+          const amKurve = (key, pt, inhalt, farbe, anker, dx, dy) => text(key, X(pt.q) + dx, Y(pt.p) + dy, inhalt, farbe, anker);
+
+          // Kurvennamen: N und A, bei Verschiebungen N₀/N₁ bzw. A₀/A₁.
+          // Jeder Name steht auf der Seite, die von der anderen Kurve abgewandt ist.
+          const seiteN = (links) => links ? ['end', -8, 16] : ['start', 8, -8];   // fallende Gerade
+          const seiteA = (links) => links ? ['end', -9, -5] : ['start', 9, 14];   // steigende Gerade
+          const nNeuLinks = nachfrageVerschoben && m.a < compare.a;
+          const aNeuLinks = angebotVerschoben && m.c < compare.c;
+          teile.push(amKurve('ln', amPunkt(main.dStart, main.dEnd, T_N), nachfrageVerschoben ? 'N₁' : 'N', '#1D4ED8', ...seiteN(nNeuLinks)));
+          if (!nurNachfrage)
+            teile.push(amKurve('la', amPunkt(main.sStart, main.sEnd, T_A), angebotVerschoben ? 'A₁' : 'A', '#B91C1C', ...seiteA(aNeuLinks || !angebotVerschoben)));
+          if (old && nachfrageVerschoben)
+            teile.push(amKurve('ln0', amPunkt(old.dStart, old.dEnd, T_N0), 'N₀', '#3B82F6', ...seiteN(!nNeuLinks)));
+          if (old && angebotVerschoben && !nurNachfrage)
+            teile.push(amKurve('la0', amPunkt(old.sStart, old.sEnd, T_A0), 'A₀', '#EF4444', ...seiteA(!aNeuLinks)));
+
+          // Gleichgewicht(e) an den Achsen ablesen
+          if (zeigeEq) {
+            const neu = marktKennzahlen(m), alt = compare ? marktKennzahlen(compare) : null;
+            const lagen = alt
+              ? [{ k: alt, i: '₀', farbe: '#64748B', alt: true }, { k: neu, i: '₁', farbe: '#0F172A' }]
+              : [{ k: neu, i: '*', farbe: '#0F172A' }];
+            const engP = alt && Math.abs(Y(alt.P) - Y(neu.P)) < 16;
+            const engQ = alt && Math.abs(X(alt.Q) - X(neu.Q)) < 64;
+            lagen.forEach((l, n) => {
+              if (!(l.k.P > 0 && l.k.Q > 0)) return;
+              if (l.alt) teile.push(
+                <g key={'hl' + n}>
+                  <line x1={X(l.k.Q)} y1={Y(l.k.P)} x2={X(l.k.Q)} y2={Y(0)} stroke="#94A3B8" strokeWidth="1.4" strokeDasharray="5 4" />
+                  <line x1={X(l.k.Q)} y1={Y(l.k.P)} x2={X(0)} y2={Y(l.k.P)} stroke="#94A3B8" strokeWidth="1.4" strokeDasharray="5 4" />
+                </g>);
+              const unten = engP && l.k.P === Math.min(alt.P, neu.P);
+              teile.push(text('gp' + n, pad.l + 6, Y(l.k.P) + (unten ? 15 : -6),
+                ohneZahlen ? `P${l.i}` : `P${l.i} = ${zahl(l.k.P)}`, l.farbe, 'start', false));
+              teile.push(text('gq' + n, X(l.k.Q) + 5, Y(0) - (engQ && !l.alt ? 22 : 6),
+                ohneZahlen ? `Q${l.i}` : `Q${l.i} = ${zahl(l.k.Q)}`, l.farbe, 'start', false));
+            });
+          }
+
+          // Renten beschriften
+          if (showSurplus && k.Q > 0) {
+            teile.push(text('kr', X(k.Q / 3), Y((2 * k.P + k.pMaxD) / 3) + 5, 'KR', '#166534', 'middle'));
+            if (m.c <= 0) teile.push(text('pr', X(k.Q / 3), Y((2 * k.P + k.pMinS) / 3) + 5, 'PR', '#991B1B', 'middle'));
+          }
+          return <g className="pop">{teile}</g>;
+        })()}
 
         {/* Achsen */}
         <line x1={pad.l} y1={pad.t-6} x2={pad.l} y2={pad.t+ih} stroke="#334155" strokeWidth="2" />
         <line x1={pad.l} y1={pad.t+ih} x2={pad.l+iw+8} y2={pad.t+ih} stroke="#334155" strokeWidth="2" />
-        {pTicks.map((v, i) => (
+        {!ohneZahlen && pTicks.map((v, i) => i % pJede ? null : (
           <text key={'tp'+i} x={pad.l-9} y={Y(v)+4} fontSize={FS} textAnchor="end" fill="#475569">{fmt(v, pDec)}</text>
         ))}
-        {qTicks.map((v, i) => (
-          <text key={'tq'+i} x={X(v)} y={pad.t+ih+19} fontSize={FS} textAnchor="middle" fill="#475569">{fmt(v)}</text>
+        {!ohneZahlen && qTicks.map((v, i) => i % qJede ? null : (
+          <text key={'tq'+i} x={X(v)} y={pad.t+ih+19} fontSize={FS} textAnchor="middle" fill="#475569">{fmt(v, qDec)}</text>
         ))}
+        {ohneZahlen && <text x={pad.l-9} y={pad.t+ih+4} fontSize={FS} textAnchor="end" fill="#475569">0</text>}
         {!mini && <>
           <text x={pad.l-(schmal?46:52)} y={pad.t-12} fontSize={FSL} fontWeight="700" fill="#334155">
             Preis ({pEinheit(sc)})
@@ -1222,14 +1763,15 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
       </svg>
 
       <div className={`${mini ? 'hidden' : 'flex'} flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-1 text-[11px] sm:text-xs text-slate-600`}>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-red-500"></span>Angebot</span>
+        {!nurNachfrage && <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-red-500"></span>Angebot</span>}
         <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-blue-600"></span>Nachfrage</span>
-        {showEq && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-yellow-400 border border-amber-800"></span>Gleichgewicht</span>}
+        {zeigeEq && <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-yellow-400 border border-amber-800"></span>Gleichgewicht</span>}
         {showSurplus && <>
           <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-green-300"></span>Konsumentenrente</span>
           <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-red-300"></span>Produzentenrente</span>
         </>}
         {compare && <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-slate-400"></span>vorher</span>}
+        {priceLineLabel && priceLine != null && <span className="flex items-center gap-1.5"><span className="inline-block w-4 border-t-2 border-dashed border-violet-600"></span>{priceLineLabel} {fmt(priceLine, 2)} €</span>}
       </div>
     </div>
   );
@@ -1384,16 +1926,19 @@ function Marktwelt({ sc, basis, markt, preis }) {
    ============================================================ */
 const STORE_KEY = 'marktsim_v1';
 const leerStats = () => ({ 1:{t:0,ok:0}, 2:{t:0,ok:0}, 3:{t:0,ok:0}, 4:{t:0,ok:0}, 5:{t:0,ok:0} });
+// Zeichenübung je Thema: t = gezeichnet, ok = alle Punkte der Checkliste erfüllt
+const leerZeichnen = leerStats;
 const DEFAULT_PROGRESS = { name:'', coins:0, xp:0, totalT:0, totalOk:0, streak:0, bestStreak:0,
   spielPartien:0, spielBest:0, missionen:0, missionAufgaben:0, missionPunkte:0, verlauf:[],
-  stats:leerStats() };
+  stats:leerStats(), zeichnen:leerZeichnen() };
 
 function loadProgress() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (raw && raw.stats) return { ...DEFAULT_PROGRESS, ...raw, stats: { ...leerStats(), ...raw.stats } };
+    if (raw && raw.stats) return { ...DEFAULT_PROGRESS, ...raw, stats: { ...leerStats(), ...raw.stats },
+                                   zeichnen: { ...leerZeichnen(), ...(raw.zeichnen || {}) } };
   } catch (e) { /* Speicher nicht verfügbar (z. B. Privatmodus) – dann ohne Speichern weiterspielen */ }
-  return { ...DEFAULT_PROGRESS, stats: leerStats() };
+  return { ...DEFAULT_PROGRESS, stats: leerStats(), zeichnen: leerZeichnen() };
 }
 function saveProgress(p) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(p)); } catch (e) {}
@@ -1402,6 +1947,10 @@ const LEVEL_XP = 120;
 const LEVEL_TITEL = ['Marktneuling','Marktbeobachter:in','Analyst:in','Marktprofi','VWL-Expert:in','Marktmeister:in'];
 const levelOf = (xp) => Math.min(12, 1 + Math.floor(xp / LEVEL_XP));
 const titelOf = (lvl) => LEVEL_TITEL[Math.min(LEVEL_TITEL.length - 1, Math.floor((lvl - 1) / 2))];
+const sterneRechnen = (st) => st.ok >= 15 ? 3 : st.ok >= 8 ? 2 : st.ok >= 3 ? 1 : 0;
+const sterneZeichnen = (st) => st.ok >= 6 ? 3 : st.ok >= 3 ? 2 : st.ok >= 1 ? 1 : 0;
+const zeichnungenVoll = (p) => Object.values(p.zeichnen || {}).reduce((n, x) => n + (x.ok || 0), 0);
+const ZEICHEN_BELOHNUNG = 12;
 
 const BADGES = [
   { id:'first',   emoji:'🎯', name:'Erster Treffer',        cond:p => p.totalOk >= 1 },
@@ -1413,6 +1962,7 @@ const BADGES = [
   { id:'streak5', emoji:'🔥', name:'5er-Serie',             cond:p => p.bestStreak >= 5 },
   { id:'coins',   emoji:'🪙', name:'Münzsammler:in (500)',  cond:p => p.coins >= 500 },
   { id:'all3',    emoji:'🏅', name:'Allrounder:in',         cond:p => [1,2,3,4,5].every(s => p.stats[s].ok >= 3) },
+  { id:'zeich5',  emoji:'✏️', name:'Zeichenprofi',          cond:p => zeichnungenVoll(p) >= 5 },
 ];
 
 /* ============================================================
@@ -2439,7 +2989,7 @@ function Fortschritt({ p, onReset, onName }) {
       <Card title="Nach Niveaustufe">
         {STUFEN.map(s => {
           const st = p.stats[s.nr], q = st.t ? Math.round(st.ok / st.t * 100) : 0;
-          const sterne = st.ok >= 15 ? 3 : st.ok >= 8 ? 2 : st.ok >= 3 ? 1 : 0;
+          const sterne = sterneRechnen(st);
           return (
             <div key={s.nr} className="py-1.5 border-b border-dashed border-slate-200 last:border-0">
               <div className="flex items-center justify-between gap-2">
@@ -2452,6 +3002,21 @@ function Fortschritt({ p, onReset, onName }) {
                 </div>
                 <span className="text-[11px] text-slate-500 num-input w-20 text-right">{st.ok} / {st.t} richtig</span>
               </div>
+            </div>
+          );
+        })}
+      </Card>
+
+      <Card title="Diagramme zeichnen">
+        {STUFEN.map(s => {
+          const z = (p.zeichnen || {})[s.nr] || { t:0, ok:0 };
+          return (
+            <div key={s.nr} className="flex items-center justify-between gap-2 py-1.5 border-b border-dashed border-slate-200 last:border-0">
+              <span className="text-[12.5px] font-semibold text-slate-700 min-w-0">{s.emoji} {s.kurz}</span>
+              <span className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] text-slate-500 num-input">{z.ok} von {z.t} vollständig</span>
+                <SterneAnzeige n={sterneZeichnen(z)} size={1.15} />
+              </span>
             </div>
           );
         })}
@@ -3104,14 +3669,314 @@ function ErgebnisPanel({ mission, verlauf, onSpeichern, sc }) {
 }
 
 /* ============================================================
+   13b. ZEICHENÜBUNG – Auftrag, Musterlösung, Checkliste
+   ============================================================ */
+// Icon in einheitlicher Pixelhöhe, egal ob hinterlegte Datei oder gezeichnetes Sprite
+const SymbolBild = ({ name, px = 28, className = '' }) => (
+  <Pixel name={name} size={px / (spriteMasse(name).w || 20)} className={className} />
+);
+// Nimmt eine hinterlegte Grafik, sobald sie in assets/icons/ liegt – sonst den Ersatz
+const symbolOder = (wunsch, ersatz) => (BILDER[wunsch] || SPRITES[wunsch]) ? wunsch : ersatz;
+const ZEICHEN_SYMBOL = symbolOder('stift', 'kurveN');
+
+const FnStrich = ({ m, kind }) => kind === 'd'
+  ? <span className="whitespace-nowrap">Q<sub>d</sub>′ = {fmt(m.a)} − {fmt(m.b)} · P</span>
+  : <span className="whitespace-nowrap">Q<sub>s</sub>′ = {m.c < 0 ? '−' + fmt(-m.c) : fmt(m.c)} + {fmt(m.d)} · P</span>;
+
+function Wertetabelle({ zeilen, sc }) {
+  return (
+    <div className="my-2 overflow-x-auto">
+      <table className="w-full border-collapse text-[13px] num-input">
+        <thead>
+          <tr className="bg-slate-50">
+            <th className="border border-slate-200 px-2 py-1.5 text-left font-semibold text-slate-600">Preis P</th>
+            <th className="border border-slate-200 px-2 py-1.5 text-right font-semibold text-blue-700">nachgefragte Menge Q<sub>d</sub></th>
+            <th className="border border-slate-200 px-2 py-1.5 text-right font-semibold text-red-600">angebotene Menge Q<sub>s</sub></th>
+          </tr>
+        </thead>
+        <tbody>
+          {zeilen.map((z, i) => (
+            <tr key={i}>
+              <td className="border border-slate-200 px-2 py-1.5 whitespace-nowrap">{geld(z.p, sc)}</td>
+              <td className="border border-slate-200 px-2 py-1.5 text-right text-blue-800">{fmt(z.qd)} {sc.qUnit}</td>
+              <td className="border border-slate-200 px-2 py-1.5 text-right text-red-700">{fmt(z.qs)} {sc.qUnit}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Zeichenauftrag({ z, st, setSt, onAbschliessen, onAndere, kompakt }) {
+  const thema = STUFEN.find(s => s.nr === z.thema);
+  const loesungRef = useRef(null);
+  const erfuellt = z.kriterien.filter((_, i) => st.haken[i]).length;
+  const gesamt = z.kriterien.length;
+
+  // Beim Aufdecken zur Musterlösung scrollen – auf dem iPhone liegt sie unter dem Auftrag
+  useEffect(() => {
+    if (st.loesung && loesungRef.current && loesungRef.current.scrollIntoView)
+      loesungRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [st.loesung]);
+
+  const absatz = (a, i) => {
+    if (a === 'FUNKTIONEN') return <FunktionsBox key={i} m={z.m} />;
+    if (a === 'TABELLE') return <Wertetabelle key={i} zeilen={z.tabelle} sc={z.sc} />;
+    if (a === 'NACHFRAGE') return (
+      <div key={i} className="my-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 font-mono text-[13px] sm:text-sm leading-7">
+        <div className="text-blue-700 font-semibold"><Fn m={z.m} kind="d" /></div>
+      </div>);
+    if (a === 'FUNKTION_NEU') return (
+      <div key={i} className="my-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 font-mono text-[13px] sm:text-sm leading-7">
+        <div className={`${z.neu.kind === 'd' ? 'text-blue-700' : 'text-red-600'} font-semibold`}><FnStrich m={z.neu.m} kind={z.neu.kind} /></div>
+      </div>);
+    return <p key={i} className="text-[13.5px] leading-relaxed text-slate-700">{a}</p>;
+  };
+
+  const rueckmeldung = erfuellt === gesamt
+    ? { t:'Stark – deine Zeichnung ist vollständig!', f:'border-green-500 bg-green-50 text-green-800', s:'hakenKreis' }
+    : erfuellt >= gesamt / 2
+      ? { t:'Schon gut. Ergänze die offenen Punkte in deinem Heft.', f:'border-amber-400 bg-amber-50 text-amber-900', s:'info' }
+      : { t:'Übertrage die Musterlösung sauber ins Heft und versuch danach eine neue Aufgabe.', f:'border-red-300 bg-red-50 text-red-800', s:'pfeilAb' };
+
+  return (
+    <div className="space-y-5">
+      <div className="card overflow-hidden">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-violet-50 border-b border-violet-100">
+          <div className="min-w-0">
+            <div className="cap text-violet-800">Zeichenauftrag · {z.typName}</div>
+            <div className="text-sm font-bold text-slate-800 leading-snug">{z.titel}</div>
+          </div>
+          <span className="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full bg-white border border-violet-200 text-violet-700 whitespace-nowrap">
+            {thema.emoji} {thema.kurz}
+          </span>
+        </div>
+
+        <div className="p-3 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <SymbolBild name={z.sc.sprite} px={26} /> Markt für {z.sc.name}
+          </div>
+          {z.auftrag.map(absatz)}
+
+          <div className="rounded-lg border border-violet-200 bg-violet-50/60 px-3 py-2">
+            <div className="text-[12px] font-bold text-violet-900 mb-1">Das gehört in deine Zeichnung</div>
+            <ul className="space-y-0.5">
+              {z.einzeichnen.map((e, i) => (
+                <li key={i} className="text-[12.5px] text-slate-700 flex gap-1.5"><span className="text-violet-500 font-bold">›</span>{e}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-[#FBF8F1] px-3 py-2 text-[12px] text-slate-600 leading-snug">
+            <div className="font-bold text-slate-700 mb-0.5">Auf dein Papier</div>
+            {z.achsen && !z.chart.ohneZahlen
+              ? massstabText(z.achsen, z.sc).map((l, i) => <div key={i}>{l}</div>)
+              : <div>Ohne Maßstab – eine saubere, beschriftete Skizze genügt.</div>}
+            <div className="mt-1 text-slate-500">Kariertes Blatt, Lineal, zwei Farben. Erst fertig zeichnen, dann vergleichen.</div>
+          </div>
+
+          {st.hilfe && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+              <div className="flex items-center gap-1.5 text-[12px] font-bold text-amber-900 mb-1"><Pixel name="info" size={0.65} />Hilfe</div>
+              <ul className="space-y-1">
+                {z.hilfe.map((h, i) => <li key={i} className="text-[12.5px] text-amber-900 leading-snug">{h}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {!st.loesung && (
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              {!st.hilfe && (
+                <button onClick={() => setSt(x => ({ ...x, hilfe: true }))}
+                  className="knopf px-3 py-2.5 rounded-xl border-2 border-amber-300 bg-amber-50 text-amber-800 font-bold text-[13px] flex items-center justify-center gap-1.5">
+                  <Pixel name="info" size={0.7} />Hilfe anzeigen
+                </button>
+              )}
+              <button onClick={() => setSt(x => ({ ...x, loesung: true }))}
+                className="knopf flex-1 px-3 py-2.5 rounded-xl bg-violet-600 text-white font-bold text-[13.5px]">
+                Fertig gezeichnet – Lösung anzeigen
+              </button>
+            </div>
+          )}
+          {!st.loesung && (
+            <button onClick={onAndere} className="text-[12px] font-semibold text-slate-500 underline underline-offset-2">
+              Andere Aufgabe zu diesem Thema
+            </button>
+          )}
+        </div>
+      </div>
+
+      {st.loesung && (
+        <div ref={loesungRef} style={{ scrollMarginTop: 72 }} className="space-y-5">
+          <Block titel="Musterlösung" farbe="b-lila" innen="px-2 pb-2 pt-5">
+            <MarktChart {...z.chart} sc={z.sc} kompakt={kompakt} />
+          </Block>
+
+          <Card title="So gehst du vor">
+            <ol className="space-y-1.5">
+              {z.schritte.map((sch, i) => (
+                <li key={i} className="text-[12.5px] leading-relaxed text-slate-700 flex gap-2">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-violet-100 text-violet-800 text-[11px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                  <span className="min-w-0">{sch}</span>
+                </li>
+              ))}
+            </ol>
+          </Card>
+
+          <Card title="Vergleiche deine Zeichnung">
+            <p className="text-[12px] text-slate-500 mb-2">Tippe an, was in deiner Zeichnung stimmt.</p>
+            <div className="space-y-1.5">
+              {z.kriterien.map((k, i) => {
+                const an = !!st.haken[i];
+                return (
+                  <button key={i} onClick={() => setSt(x => ({ ...x, haken: { ...x.haken, [i]: !x.haken[i] } }))}
+                    aria-pressed={an}
+                    className={`w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-lg border-2 transition ${an
+                      ? 'border-green-500 bg-green-50' : 'border-slate-200 bg-white'}`}>
+                    <span className={`shrink-0 w-5 h-5 mt-px rounded border-2 flex items-center justify-center ${an
+                      ? 'border-green-600 bg-white' : 'border-slate-300 bg-white'}`}>
+                      {an && <Pixel name="haken" size={0.5} />}
+                    </span>
+                    <span className="text-[12.5px] leading-snug text-slate-700 min-w-0">{k}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className={`mt-3 rounded-lg border-2 px-3 py-2 text-[13px] font-semibold ${rueckmeldung.f}`}>
+              <span className="inline-flex items-start gap-1.5">
+                <Pixel name={rueckmeldung.s} size={0.7} className="mt-px" />
+                <span>{erfuellt} von {gesamt} Punkten erfüllt. {rueckmeldung.t}</span>
+              </span>
+            </div>
+            <button onClick={onAbschliessen}
+              className="knopf mt-3 w-full py-3 rounded-xl bg-violet-600 text-white font-bold text-[13.5px]">
+              Nächste Zeichnung · +{ZEICHEN_BELOHNUNG} Münzen
+            </button>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   13c. STARTMENÜ – Themenübersicht
+   ============================================================ */
+const THEMEN = [
+  { nr:1, sprite:'punkt',        text:'Wo sich Angebot und Nachfrage treffen: Gleichgewichtspreis und -menge bestimmen.' },
+  { nr:2, sprite:'flaecheGruen', text:'Wer gewinnt am Markt? Konsumenten- und Produzentenrente berechnen und einzeichnen.' },
+  { nr:3, sprite:'tausch',       text:'Was verschiebt die Kurven – und wohin? Das neue Gleichgewicht finden.' },
+  { nr:4, sprite:'staat',        text:'Höchst- und Mindestpreise: Mangel und Überschuss erkennen.' },
+  { nr:5, sprite:'trend',        text:'Wie stark reagiert die Nachfrage, wenn sich der Preis ändert?' },
+].map(t => ({ ...STUFEN.find(s => s.nr === t.nr), ...t }));
+
+function Kachel({ sprite, titel, text, onClick, marke, farbe = 'border-[#EAE2D2] bg-white' }) {
+  return (
+    <button onClick={onClick}
+      className={`produktkarte w-full text-left rounded-xl border-2 ${farbe} p-3 flex items-start gap-3 hover:border-blue-300`}>
+      <span className="w-11 h-11 rounded-lg bg-[#FBF8F1] border border-[#EAE2D2] flex items-center justify-center shrink-0">
+        <SymbolBild name={sprite} px={28} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="text-[13.5px] font-bold text-slate-800 leading-tight">{titel}</span>
+          {marke && <span className="text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-600 text-white">{marke}</span>}
+        </span>
+        <span className="block text-[11.5px] text-slate-500 leading-snug mt-0.5">{text}</span>
+      </span>
+      <span className="self-center text-slate-300 font-bold text-lg shrink-0">›</span>
+    </button>
+  );
+}
+
+function Startmenue({ p, gehe }) {
+  const lvl = levelOf(p.xp);
+  const hallo = p.name ? `Hallo ${p.name}!` : 'Hallo!';
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 pt-1">
+      <div className="text-center">
+        <h2 className="pixel text-[17px] sm:text-[21px] font-bold uppercase text-blue-800">Was möchtest du bearbeiten?</h2>
+        <p className="text-[12.5px] text-slate-500 mt-1">Angebot und Nachfrage · Level {lvl} · {fmt(p.coins)} Münzen</p>
+      </div>
+
+      <Maskottchen figur="🧑‍🏫" text={<>{hallo} Wähle ein Thema. Du kannst <b>rechnen</b> oder <b>Diagramme zeichnen</b> –
+        oder im Simulator frei ausprobieren, wie sich der Markt verändert.</>} />
+
+      <Block titel="Themen" farbe="b-blau" innen="px-3 pb-3 pt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {THEMEN.map(th => {
+            const r = p.stats[th.nr] || { t:0, ok:0 }, z = (p.zeichnen || {})[th.nr] || { t:0, ok:0 };
+            return (
+              <div key={th.nr} data-thema={th.nr} className="rounded-xl border-2 border-[#EAE2D2] bg-[#FBF8F1] p-3 flex flex-col">
+                <div className="flex items-start gap-3">
+                  <span className="w-12 h-12 rounded-lg bg-white border border-[#EAE2D2] flex items-center justify-center shrink-0">
+                    <SymbolBild name={th.sprite} px={30} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Thema {th.nr}</div>
+                    <div className="text-[14.5px] font-bold text-slate-800 leading-tight">{th.name}</div>
+                    <p className="text-[11.5px] text-slate-500 leading-snug mt-1">{th.text}</p>
+                  </div>
+                </div>
+                <div className="mt-auto pt-3 grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-1">
+                    <button onClick={() => gehe('rechnen', th.nr)}
+                      className="knopf rounded-lg bg-blue-600 text-white px-2 py-2.5 text-[13px] font-bold">Rechnen</button>
+                    <span className="flex justify-center" title="Sterne fürs Rechnen"><SterneAnzeige n={sterneRechnen(r)} size={1} /></span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <button onClick={() => gehe('zeichnen', th.nr)}
+                      className="knopf rounded-lg bg-violet-600 text-white px-2 py-2.5 text-[13px] font-bold">Zeichnen</button>
+                    <span className="flex justify-center" title="Sterne fürs Zeichnen"><SterneAnzeige n={sterneZeichnen(z)} size={1} /></span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Block>
+
+      <Block titel="Üben und entdecken" farbe="b-gruen" innen="px-3 pb-3 pt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <Kachel sprite={ZEICHEN_SYMBOL} titel="Diagramme zeichnen" marke="neu" farbe="border-violet-200 bg-violet-50/40"
+            text="Aufgaben aus allen Themen: auf Papier zeichnen und mit der Musterlösung vergleichen."
+            onClick={() => gehe('zeichnen', 0)} />
+          <Kachel sprite="puzzle" titel="Gemischte Rechenrunde"
+            text="Fünf Rechenaufgaben quer durch alle Themen – gut zur Wiederholung."
+            onClick={() => gehe('rechnen', 0)} />
+          <Kachel sprite="diagramm" titel="Simulator und Mission"
+            text="Regler bewegen, Kurven beobachten und eine geführte Mission lösen."
+            onClick={() => gehe('simulator')} />
+          <Kachel sprite="aktentasche" titel="Marktabenteuer"
+            text={`Führe ein Unternehmen: ${SPIEL_RUNDEN} Runden, jede Runde eine neue Preisentscheidung.`}
+            onClick={() => gehe('spiel')} />
+        </div>
+      </Block>
+
+      <Block titel="Nachschlagen" farbe="b-gelb" innen="px-3 pb-3 pt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <Kachel sprite="buch" titel="Theorie" text="Die wichtigsten Begriffe und Formeln kompakt erklärt."
+            onClick={() => gehe('theorie')} />
+          <Kachel sprite="pokal" titel="Mein Fortschritt" text="Level, Sterne je Thema und Abzeichen."
+            onClick={() => gehe('fortschritt')} />
+        </div>
+      </Block>
+    </div>
+  );
+}
+
+/* ============================================================
    14. HAUPTKOMPONENTE
    ============================================================ */
 function App() {
   const [p, setP] = useState(loadProgress);
   useEffect(() => saveProgress(p), [p]);
   const kompakt = useKompakt();
-  const [ansicht, setAnsicht] = useState('simulator');
+  const [ansicht, setAnsicht] = useState('start');
   const [trainTab, setTrainTab] = useState('uebung');
+  // Beim Wechsel der Ansicht oben beginnen – das Menü ist auf dem iPhone lang
+  useEffect(() => { try { window.scrollTo(0, 0); } catch (e) {} }, [ansicht]);
   const [toast, setToast] = useState(null);
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), 1800); return () => clearTimeout(id); }, [toast]);
 
@@ -3242,6 +4107,40 @@ function App() {
   };
   const weiter = () => { setIdx(i => i + 1); resetFeld(); };
 
+  /* ---------- Zeichenübung ---------- */
+  const leererZeichenStand = { hilfe: false, loesung: false, haken: {} };
+  const [zeichenThema, setZeichenThema] = useState(0);
+  const [zeichnung, setZeichnung] = useState(() => makeZeichnung(0));
+  const [zStand, setZStand] = useState(leererZeichenStand);
+  const neueZeichnung = (thema) => {
+    setZeichenThema(thema);
+    setZeichnung(makeZeichnung(thema, zeichnung && zeichnung.typ));
+    setZStand(leererZeichenStand);
+  };
+  // Belohnt wird das Zeichnen und Vergleichen, nicht die Selbsteinschätzung –
+  // so lohnt es sich nicht, Haken ungeprüft zu setzen.
+  const zeichnungAbschliessen = () => {
+    const gesamt = zeichnung.kriterien.length;
+    const voll = zeichnung.kriterien.every((_, i) => zStand.haken[i]);
+    setP(pr => {
+      const alt = (pr.zeichnen || {})[zeichnung.thema] || { t:0, ok:0 };
+      return { ...pr, coins: pr.coins + ZEICHEN_BELOHNUNG, xp: pr.xp + ZEICHEN_BELOHNUNG,
+        zeichnen: { ...leerZeichnen(), ...(pr.zeichnen || {}), [zeichnung.thema]: { t: alt.t + 1, ok: alt.ok + (voll ? 1 : 0) } } };
+    });
+    setToast(`+${ZEICHEN_BELOHNUNG} 🪙`);
+    neueZeichnung(zeichenThema);
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+  };
+
+  /* ---------- Navigation aus dem Startmenü ---------- */
+  const gehe = (ziel, nr) => {
+    if (ziel === 'rechnen') { neueRunde(nr); setAnsicht('training'); }
+    else if (ziel === 'zeichnen') { neueZeichnung(nr); setTrainTab('zeichnen'); setAnsicht('training'); }
+    else if (ziel === 'simulator') setAnsicht('simulator');
+    else { setTrainTab(ziel); setAnsicht('training'); }
+    try { window.scrollTo(0, 0); } catch (e) {}
+  };
+
   /* ---------- Marktabenteuer ---------- */
   const [spiel, setSpiel] = useState(null);
   const spielStarten = (k) => { setSpiel(neuesSpiel(k)); setTrainTab('spiel'); };
@@ -3309,12 +4208,13 @@ function App() {
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#DBE7F3]">
         <div className="max-w-[1600px] mx-auto px-2 sm:px-3 py-2 flex items-center gap-2 sm:gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0">
+          <button onClick={() => setAnsicht('start')} title="Zum Menü" aria-label="Zum Menü"
+            className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0">
             <Pixel name="diagramm" size={3} />
-          </div>
+          </button>
           <div className="min-w-0 flex-1">
             <h1 className="pixel text-[13px] sm:text-[17px] font-bold uppercase text-blue-800 leading-none truncate">
-              Marktnachfrage-Simulator
+              <span className="sm:hidden">Marktsimulator</span><span className="hidden sm:inline">Marktnachfrage-Simulator</span>
             </h1>
             <p className="hidden sm:block text-[11px] text-slate-500 leading-tight mt-1">
               Verstehe Märkte. Analysiere Zusammenhänge. Löse Aufgaben.
@@ -3324,6 +4224,7 @@ function App() {
           <Chip sprite="muenze" wert={fmt(p.coins)} farbe="bg-yellow-50 border-yellow-200 text-yellow-700" />
           <Chip sprite="herz" wert={`${p.totalT ? Math.round(p.totalOk / p.totalT * 100) : 100} %`} farbe="bg-rose-50 border-rose-200 text-rose-600" />
           <div className="flex gap-1.5">
+            <IconBtn sprite="haus" titel="Menü" aktiv={ansicht === 'start'} onClick={() => setAnsicht('start')} />
             <IconBtn sprite="diagramm" titel="Simulator" aktiv={ansicht === 'simulator'} onClick={() => setAnsicht('simulator')} />
             <IconBtn sprite="pokal" titel="Trainingscenter" aktiv={ansicht === 'training'} onClick={() => setAnsicht('training')} />
             <IconBtn sprite="zahnrad" titel="Einstellungen" aktiv={ansicht === 'einstellungen'} onClick={() => setAnsicht('einstellungen')} />
@@ -3338,6 +4239,8 @@ function App() {
       )}
 
       <main className="max-w-[1600px] mx-auto px-2 sm:px-3 py-3">
+        {ansicht === 'start' && <Startmenue p={p} gehe={gehe} />}
+
         {ansicht === 'simulator' && (
           <div className="grid gap-5 grid-cols-1 lg:grid-cols-12 items-start">
             <div className="contents lg:flex lg:flex-col lg:gap-5 lg:col-span-3 lg:col-start-1 lg:row-start-1">
@@ -3407,7 +4310,7 @@ function App() {
         {ansicht === 'training' && (
           <div className="max-w-3xl mx-auto space-y-3">
             <div className="flex gap-1.5 overflow-x-auto pb-1">
-              {[['uebung','📝 Übungsrunden'],['spiel','🏪 Marktabenteuer'],['theorie','📘 Theorie'],['fortschritt','🏆 Fortschritt']].map(([k, l]) => (
+              {[['uebung','📝 Rechnen'],['zeichnen','✏️ Zeichnen'],['spiel','🏪 Marktabenteuer'],['theorie','📘 Theorie'],['fortschritt','🏆 Fortschritt']].map(([k, l]) => (
                 <button key={k} onClick={() => setTrainTab(k)}
                   className={`shrink-0 px-3 py-2 rounded-lg text-[12.5px] font-semibold border ${trainTab === k
                     ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-[#DBE7F3]'}`}>{l}</button>
@@ -3469,6 +4372,32 @@ function App() {
               </>
             )}
 
+            {trainTab === 'zeichnen' && (
+              <>
+                <Block titel="Thema wählen">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {STUFEN.map(s => (
+                      <button key={s.nr} onClick={() => neueZeichnung(s.nr)}
+                        className={`text-left px-2.5 py-2 rounded-lg border-2 text-[12px] font-semibold ${zeichenThema === s.nr
+                          ? 'border-violet-500 bg-violet-50 text-violet-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+                        {s.emoji} {s.kurz}
+                      </button>
+                    ))}
+                    <button onClick={() => neueZeichnung(0)}
+                      className={`text-left px-2.5 py-2 rounded-lg border-2 text-[12px] font-semibold ${zeichenThema === 0
+                        ? 'border-violet-500 bg-violet-50 text-violet-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+                      🎲 Gemischt
+                    </button>
+                  </div>
+                  <p className="text-[11.5px] text-slate-500 mt-2 leading-snug">
+                    Zeichne auf Papier. Danach deckst du die Musterlösung auf und hakst ab, was bei dir stimmt.
+                  </p>
+                </Block>
+                <Zeichenauftrag z={zeichnung} st={zStand} setSt={setZStand} kompakt={kompakt}
+                  onAbschliessen={zeichnungAbschliessen} onAndere={() => neueZeichnung(zeichenThema)} />
+              </>
+            )}
+
             {trainTab === 'spiel' && (spiel ? (
               <>
                 {spiel.phase !== 'ende' && (
@@ -3514,7 +4443,7 @@ function App() {
             {trainTab === 'theorie' && <Theorie />}
             {trainTab === 'fortschritt' && (
               <Fortschritt p={p} onName={n => setP(o => ({ ...o, name: n }))}
-                onReset={() => { if (confirm('Wirklich den gesamten Fortschritt auf diesem Gerät löschen?')) setP({ ...DEFAULT_PROGRESS, stats: leerStats() }); }} />
+                onReset={() => { if (confirm('Wirklich den gesamten Fortschritt auf diesem Gerät löschen?')) setP({ ...DEFAULT_PROGRESS, stats: leerStats(), zeichnen: leerZeichnen() }); }} />
             )}
           </div>
         )}
@@ -3530,12 +4459,12 @@ function App() {
                 Level, Münzen, Ergebnisse und gespeicherte Marktlagen liegen ausschließlich in diesem Browser
                 (localStorage). Es werden keine Daten an einen Server gesendet.
               </p>
-              <button onClick={() => { if (confirm('Wirklich alles zurücksetzen?')) { setP({ ...DEFAULT_PROGRESS, stats: leerStats() }); setAnsicht('simulator'); } }}
+              <button onClick={() => { if (confirm('Wirklich alles zurücksetzen?')) { setP({ ...DEFAULT_PROGRESS, stats: leerStats(), zeichnen: leerZeichnen() }); setAnsicht('start'); } }}
                 className="mt-3 w-full py-2 rounded-lg border-2 border-red-300 text-red-600 font-semibold text-[13px]">
                 Fortschritt zurücksetzen
               </button>
-              <button onClick={() => setAnsicht('simulator')}
-                className="knopf mt-2 w-full py-2 rounded-lg bg-blue-600 text-white font-bold text-[13px]">Zurück zum Simulator</button>
+              <button onClick={() => setAnsicht('start')}
+                className="knopf mt-2 w-full py-2 rounded-lg bg-blue-600 text-white font-bold text-[13px]">Zurück zum Menü</button>
             </Block>
             <Block titel="Über dieses Lernspiel">
               <p className="text-[12.5px] text-slate-600 leading-relaxed">
