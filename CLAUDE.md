@@ -76,6 +76,8 @@ Ersatzszene aus den Sprites. Diese Ersatzdarstellung bitte erhalten.
 |---|---|
 | `markt-simulator.html` | Marktnachfrage-Simulator (Angebot und Nachfrage), Hauptdatei |
 | `markt-simulator-offline.html` | daraus erzeugt, alles eingebettet, läuft ohne Internet |
+| `hofa-markt-simulator.html` | Hofa-Fassung (Hotelfachschule), **erzeugt** mit `tools/hofa_bauen.py` |
+| `hofa-markt-simulator-offline.html` | deren Offline-Fassung |
 | `index.html`, `sortimentspyramide_random.html` | Sortimentspyramide |
 | `assets/icons/` | hinterlegte Bilddateien (siehe oben) |
 | `assets/marktwelt/` | Ebenen der Marktszene (Hintergrund, Figuren, Kisten, LKW) |
@@ -129,6 +131,26 @@ Fachliche Regeln, die nicht verletzt werden dürfen:
 - Alle angezeigten Werte werden aus den hinterlegten Funktionen berechnet,
   nichts wird fest verdrahtet.
 
+## Hofa-Fassung (Hotelfachschule)
+
+`hofa-markt-simulator.html` wird **nicht von Hand bearbeitet**. `tools/hofa_bauen.py`
+erzeugt sie aus `markt-simulator.html` und tauscht nur die Inhalte aus:
+
+- Märkte aus Hotellerie, Gastronomie und Tourismus (Hotel, Ferienwohnung,
+  Restaurant, Café, Tagung, Pauschalreise, Events, E-Bike-Verleih, Mietwagen)
+- Ereignisse für Stufe 3, Zeichenübung und Marktabenteuer (Messe, Regenwetter,
+  Online-Bewertungen, Mindestlohn, Fachkräftemangel, Übernachtungssteuer …)
+- Marktteilnehmer (Urlaubsgäste, Geschäftsreisende, Tagesgäste, Betriebe,
+  Lieferanten, Investor:innen, Staat & Gemeinde)
+- Beispiele in der Theorie (Revenue Management, Mindestlohn), Titel und Texte
+- eigener Speicherschlüssel `marktsim_hofa_v1`, damit sich der Fortschritt nicht
+  mit der FOS/BOS-Fassung vermischt
+
+Alles andere – Diagramm, Aufgabentypen, Missionen, Zeichenübung, Oberfläche – kommt
+aus dem Hauptsimulator. Eine Änderung dort gelangt mit dem nächsten Lauf von
+`tools/hofa_bauen.py` in die Hofa-Fassung. Passt ein Ankertext des Skripts nicht
+mehr, bricht es mit einer Meldung ab; dann den Anker im Skript nachziehen.
+
 ## Veröffentlichung – wichtig
 
 **GitHub Pages ist für dieses Repository auf den Ordner `docs/` eingestellt.**
@@ -145,13 +167,16 @@ Adressen:
 | Sortimentspyramide (Startseite) | `…github.io/Schule2/` |
 | Marktnachfrage-Simulator | `…github.io/Schule2/markt-simulator.html` |
 | Offline-Fassung | `…github.io/Schule2/markt-simulator-offline.html` |
+| Hofa-Simulator | `…github.io/Schule2/hofa-markt-simulator.html` |
+| Hofa-Offline-Fassung | `…github.io/Schule2/hofa-markt-simulator-offline.html` |
 | Weltkarte live | `…github.io/Schule2/weltkarte-live/` |
 
 ## Nach Änderungen
 
 ```
 python3 tools/icons_einbetten.py    # nur nötig, wenn assets/icons/ geändert wurde
-node tools/offline_bauen.js         # erzeugt markt-simulator-offline.html neu
+python3 tools/hofa_bauen.py         # erzeugt die Hofa-Fassung aus dem Hauptsimulator
+node tools/offline_bauen.js         # erzeugt beide Offline-Fassungen neu
                                     # einmalig vorher:  cd tools && npm install
 python3 tools/veroeffentlichen.py   # spiegelt die Seiten nach docs/
 ```

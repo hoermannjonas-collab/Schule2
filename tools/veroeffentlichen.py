@@ -21,6 +21,8 @@ DOCS = WURZEL / 'docs'
 SEITEN = [
     'markt-simulator.html',
     'markt-simulator-offline.html',
+    'hofa-markt-simulator.html',
+    'hofa-markt-simulator-offline.html',
     'index.html',
     'sortimentspyramide_random.html',
 ]

@@ -19,6 +19,10 @@ Sachen für schule
   mit Rechenaufgaben und der Spielmodus „Marktabenteuer" (acht Runden Unternehmensführung).
   Für Laptop, iPad und iPhone; Fortschritt nur lokal im Browser.
   Benötigt beim Öffnen eine Internetverbindung (React und Tailwind über CDN).
+- `hofa-markt-simulator.html` – **Hofa-Fassung** für den VWL-Unterricht an der Hotelfachschule:
+  gleiche Funktionen, aber mit Märkten, Ereignissen und Beispielen aus Hotellerie,
+  Gastronomie und Tourismus. Wird mit `tools/hofa_bauen.py` aus dem Hauptsimulator erzeugt;
+  dazu `hofa-markt-simulator-offline.html` ohne Internetbedarf.
 - `assets/icons/` – hinterlegte Bilddateien. Diese Grafiken sind maßgeblich und werden
   nicht nachgezeichnet; Details in `CLAUDE.md`.
 - `assets/marktwelt/` – die Marktszene als Ebenen: feststehender Hintergrund plus
@@ -39,4 +43,6 @@ Sachen für schule
 | Sortimentspyramide | https://hoermannjonas-collab.github.io/Schule2/ |
 | Marktnachfrage-Simulator | https://hoermannjonas-collab.github.io/Schule2/markt-simulator.html |
 | Offline-Fassung zum Verteilen | https://hoermannjonas-collab.github.io/Schule2/markt-simulator-offline.html |
+| Hofa-Simulator (Hotelfachschule) | https://hoermannjonas-collab.github.io/Schule2/hofa-markt-simulator.html |
+| Hofa-Offline-Fassung | https://hoermannjonas-collab.github.io/Schule2/hofa-markt-simulator-offline.html |
 | Weltkarte live | https://hoermannjonas-collab.github.io/Schule2/weltkarte-live/ |
