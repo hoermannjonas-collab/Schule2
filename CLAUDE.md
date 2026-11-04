@@ -133,23 +133,48 @@ Fachliche Regeln, die nicht verletzt werden dürfen:
 
 ## Hofa-Fassung (Hotelfachschule)
 
-`hofa-markt-simulator.html` wird **nicht von Hand bearbeitet**. `tools/hofa_bauen.py`
-erzeugt sie aus `markt-simulator.html` und tauscht nur die Inhalte aus:
+`hofa-markt-simulator.html` wird **nicht von Hand bearbeitet**. Sie entsteht mit
+`python3 tools/hofa_bauen.py` aus `markt-simulator.html` und `tools/hofa_inhalte.jsx`.
 
-- Märkte aus Hotellerie, Gastronomie und Tourismus (Hotel, Ferienwohnung,
-  Restaurant, Café, Tagung, Pauschalreise, Events, E-Bike-Verleih, Mietwagen)
-- Ereignisse für Stufe 3, Zeichenübung und Marktabenteuer (Messe, Regenwetter,
-  Online-Bewertungen, Mindestlohn, Fachkräftemangel, Übernachtungssteuer …)
-- Marktteilnehmer (Urlaubsgäste, Geschäftsreisende, Tagesgäste, Betriebe,
-  Lieferanten, Investor:innen, Staat & Gemeinde)
-- Beispiele in der Theorie (Revenue Management, Mindestlohn), Titel und Texte
-- eigener Speicherschlüssel `marktsim_hofa_v1`, damit sich der Fortschritt nicht
-  mit der FOS/BOS-Fassung vermischt
+Grundlage ist die Bestandsaufnahme zu Lernbereich 2 „Zusammenhänge zwischen Markt
+und Preis erfassen“ (VWL Hotelfachschule, 1. Schuljahr; Stand 04.11.2026). Daraus
+folgen diese verbindlichen Regeln für die Hofa-Fassung:
 
-Alles andere – Diagramm, Aufgabentypen, Missionen, Zeichenübung, Oberfläche – kommt
-aus dem Hauptsimulator. Eine Änderung dort gelangt mit dem nächsten Lauf von
-`tools/hofa_bauen.py` in die Hofa-Fassung. Passt ein Ankertext des Skripts nicht
-mehr, bricht es mit einer Meldung ab; dann den Anker im Skript nachziehen.
+- **Schreibweise p und x**, Funktionen in der Form N: p = a − b·x, A: p = c + d·x.
+  Preis auf der Hochachse, Menge auf der Rechtsachse. Intern rechnet der Simulator
+  weiter mit Qd/Qs; angezeigt wird nur die p-Form (`inv`, `nFkt`, `aFkt`).
+- **Anrede „Sie“** durchgängig.
+- **Nicht Unterrichtsstoff** und daher ausgeblendet: Konsumenten-/Produzentenrente,
+  Gesamtwohlfahrt, Prohibitivpreis, Mindestangebotspreis, Sättigungsmenge,
+  Revenue Management (als Begriff).
+- **Begriffe** wie im Unterricht: Angebotsüberhang, Nachfrageüberhang,
+  Kapazitätsgrenze, Bewegung auf der Kurve / Verschiebung.
+- **Themen** (Startmenü, Rechnen, Zeichnen): 1 Gleichgewicht (inkl. Umstellen nach x),
+  2 Überhänge und Kapazitätsgrenze, 3 Verschiebungen (inkl. Doppelverschiebung und
+  Fehlersuche), 4 Höchst-/Mindestpreis (auch nicht bindend), 5 Preis-, Einkommens-
+  und Kreuzpreiselastizität.
+- **Glatte Zahlen:** Steigungen höchstens drei Nachkommastellen, Preise höchstens
+  zwei, Mengen ganzzahlig – auch nach Verschiebungen (`glatterMarkt`).
+
+Aufbau:
+
+- `tools/hofa_inhalte.jsx` enthält die Hofa-Abschnitte (Märkte, Aufgaben,
+  Zeichenaufgaben, Mission, Theorie, Spielereignisse, Marktteilnehmer …). Jeder
+  Abschnitt beginnt mit `//#ABSCHNITT name` und ersetzt den gleichnamigen Teil des
+  Hauptsimulators (Zuordnung in `ABSCHNITTE` in `hofa_bauen.py`).
+- Einzelne Texte der Oberfläche ersetzt `ERSETZUNGEN` in `hofa_bauen.py`.
+- Der Hauptsimulator hat dafür einen Schalter `VARIANTE` (Renten an/aus) und im
+  Diagramm die Option `kapazitaet`. Beides ändert an der FOS/BOS-Fassung nichts.
+- Am Ende prüft das Skript, dass keine du-Formen und keine der ausgeblendeten
+  Begriffe mehr vorkommen. Findet es etwas, bricht es mit der Zeilenangabe ab.
+
+Diagramm, Oberfläche, Spiel und Fortschritt kommen aus dem Hauptsimulator. Eine
+Änderung dort gelangt mit dem nächsten Lauf von `tools/hofa_bauen.py` in die
+Hofa-Fassung. Passt ein Anker nicht mehr oder enthält neuer Text eine du-Form,
+bricht das Skript ab; dann den Anker bzw. die Ersetzung nachziehen.
+
+Offen laut Bestandsaufnahme: Marktformen (Neun-Felder-Schema), Marktversagen und
+Mengensteuer sind Teil von LB 2, aber (noch) nicht im Simulator.
 
 ## Veröffentlichung – wichtig
 

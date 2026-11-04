@@ -19,9 +19,12 @@ Sachen für schule
   mit Rechenaufgaben und der Spielmodus „Marktabenteuer" (acht Runden Unternehmensführung).
   Für Laptop, iPad und iPhone; Fortschritt nur lokal im Browser.
   Benötigt beim Öffnen eine Internetverbindung (React und Tailwind über CDN).
-- `hofa-markt-simulator.html` – **Hofa-Fassung** für den VWL-Unterricht an der Hotelfachschule:
-  gleiche Funktionen, aber mit Märkten, Ereignissen und Beispielen aus Hotellerie,
-  Gastronomie und Tourismus. Wird mit `tools/hofa_bauen.py` aus dem Hauptsimulator erzeugt;
+- `hofa-markt-simulator.html` – **Hofa-Fassung** für VWL an der Hotelfachschule (1. Schuljahr,
+  Lernbereich 2): Schreibweise p/x mit Funktionen p = a − b·x, Anrede „Sie“, Themen
+  Gleichgewicht, Überhänge und Kapazitätsgrenze, Verschiebungen (inkl. Doppelverschiebung und
+  Fehlersuche), Höchst-/Mindestpreis, Preis-, Einkommens- und Kreuzpreiselastizität – ohne
+  Konsumenten-/Produzentenrente. Märkte und Ereignisse aus Hotellerie, Gastronomie und Tourismus.
+  Wird mit `tools/hofa_bauen.py` aus dem Hauptsimulator und `tools/hofa_inhalte.jsx` erzeugt;
   dazu `hofa-markt-simulator-offline.html` ohne Internetbedarf.
 - `assets/icons/` – hinterlegte Bilddateien. Diese Grafiken sind maßgeblich und werden
   nicht nachgezeichnet; Details in `CLAUDE.md`.

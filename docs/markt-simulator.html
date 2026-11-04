@@ -70,6 +70,10 @@ const fmt = (n, dec = 0) => (!isFinite(n) ? '–'
   : n.toLocaleString('de-DE', { minimumFractionDigits: dec, maximumFractionDigits: dec }));
 const eur = (n, dec = 2) => fmt(n, dec) + ' €';
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+/* Variante dieser Datei. Die Hofa-Fassung (tools/hofa_bauen.py) ersetzt diese Zeile:
+   renten – Konsumenten- und Produzentenrente anzeigen (in der Hofa nicht Unterrichtsstoff) */
+const VARIANTE = { renten: true };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // Akzeptiert deutsche Eingaben: "1.250", "4,50", "4.5", " 1 250 Stück"
@@ -1457,10 +1461,13 @@ function useKompakt() {
    marken      – einzelne Punkte, z. B. aus einer Wertetabelle { p, q, farbe, label }
    nurNachfrage– nur die Nachfragekurve (Elastizität)
    delta       – ΔP und ΔQ an den Achsen markieren { p1, p2, q1, q2 }
+   kapazitaet  – Kapazitätsgrenze: mehr als diese Menge kann nicht angeboten werden,
+                 die Angebotskurve wird dort senkrecht
    priceLineLabel – eigene Beschriftung der waagrechten Preislinie */
 function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points, gapLabel, sc, titel,
                       kompakt, linien, rechteck, mini, verschiebung,
-                      achsen, zeichnung, ohneZahlen, marken, nurNachfrage, delta, priceLineLabel }) {
+                      achsen, zeichnung, ohneZahlen, marken, nurNachfrage, delta, priceLineLabel, kapazitaet }) {
+  if (!VARIANTE.renten) showSurplus = false;
   const [wrapRef, breite] = useBreite();
   // Schmale Container bekommen einen kleineren Zeichenbereich, damit Schrift
   // und Punkte im Verhältnis größer und damit lesbar bleiben.
@@ -1480,7 +1487,13 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
   const X = (q) => pad.l + clamp(q / qMax, 0, 1.2) * iw;
   const Y = (p) => pad.t + ih - clamp(p / pMax, 0, 1.2) * ih;
 
-  const k = marktKennzahlen(m);
+  // Gleichgewicht unter Berücksichtigung einer Kapazitätsgrenze: Reicht die Kapazität nicht,
+  // wird die Grenzmenge gehandelt und der Preis ergibt sich aus der Nachfrage.
+  const eqVon = (mk) => {
+    const kk = marktKennzahlen(mk);
+    return kapazitaet != null && kk.Q > kapazitaet ? { ...kk, Q: kapazitaet, P: (mk.a - kapazitaet) / mk.b } : kk;
+  };
+  const k = eqVon(m);
   const stellen = (step) => Math.abs(step - Math.round(step)) < 1e-9 ? 0
     : Math.abs(step * 10 - Math.round(step * 10)) < 1e-9 ? 1 : 2;
   const pDec = stellen(pS.step), qDec = stellen(qS.step);
@@ -1490,14 +1503,15 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
   const curves = (mk, solid) => {
     const dTop = prohibitiv(mk), dStart = { q: 0, p: dTop }, dEnd = { q: mk.a, p: 0 };
     const sLowP = minAngebot(mk), sLowQ = Math.max(0, mk.c);
-    const pEnd = Math.min(pMax, (qMax - mk.c) / mk.d);
+    const qGrenze = kapazitaet != null ? Math.min(qMax, kapazitaet) : qMax;
+    const pEnd = Math.min(pMax, (qGrenze - mk.c) / mk.d);
     const sEnd = { q: mk.c + mk.d * pEnd, p: pEnd };
     return { dStart, dEnd, sStart: { q: sLowQ, p: sLowP }, sEnd, solid };
   };
   const main = curves(m, true);
   const old = compare ? curves(compare, false) : null;
   // Wo auf den Geraden die Kurvennamen stehen (Anteil vom Anfang bis zum Ende der Linie)
-  const T_N = 0.86, T_N0 = 0.72, T_A = 0.93, T_A0 = 0.76;
+  const T_N = 0.86, T_N0 = 0.72, T_A = kapazitaet != null ? 0.45 : 0.93, T_A0 = 0.76;
   const preisBei = (k, f) => k.p0 + (k.p1 - k.p0) * f;
 
   const dotsOn = (A, B, n = 7) => Array.from({ length: n }, (_, i) => {
@@ -1542,7 +1556,7 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
                   stroke="#93C5FD" strokeWidth="2.5" strokeDasharray="7 5" />
             {!nurNachfrage && <line x1={X(old.sStart.q)} y1={Y(old.sStart.p)} x2={X(old.sEnd.q)} y2={Y(old.sEnd.p)}
                   stroke="#FCA5A5" strokeWidth="2.5" strokeDasharray="7 5" />}
-            {zeigeEq && (() => { const ko = marktKennzahlen(compare); return (
+            {zeigeEq && (() => { const ko = eqVon(compare); return (
               <circle cx={X(ko.Q)} cy={Y(ko.P)} r="6" fill="#fff" stroke="#9CA3AF" strokeWidth="2.5" />
             ); })()}
           </g>
@@ -1558,17 +1572,22 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
             sperr.push(linie({ p0: main.dStart.p, p1: main.dEnd.p }, T_N), linie({ p0: old.dStart.p, p1: old.dEnd.p }, T_N0));
             if (!nurNachfrage) sperr.push(linie({ p0: main.sStart.p, p1: main.sEnd.p }, T_A), linie({ p0: old.sStart.p, p1: old.sEnd.p }, T_A0));
           }
-          const hoehen = zeichnung ? [0.9, 0.8, 0.7, 0.62, 0.55, 0.45, 0.35, 0.25] : null;
+          const hoehen = zeichnung ? Array.from({ length: 20 }, (_, i) => 0.94 - i * 0.04) : null;
+          const belegt = [];                    // Höhen bereits gezeichneter Pfeile
           return [
             { an: nachfrageVerschoben, f: qd, farbe: '#1D4ED8', wort: 'Nachfrage', hoehen: hoehen || [0.62, 0.45, 0.78, 0.3] },
             { an: angebotVerschoben && !nurNachfrage, f: qs, farbe: '#B91C1C', wort: 'Angebot', hoehen: hoehen || [0.62, 0.78, 0.45, 0.88] },
           ].map(v => {
             if (!v.an) return null;
             const innen = (q) => q >= qMax * 0.04 && q <= qMax * 0.96;
-            const gueltig = v.hoehen.filter(f => innen(v.f(compare, pMax * f)) && innen(v.f(m, pMax * f)));
-            const abstand = (f) => Math.min(...sperr.map(x => Math.abs(pMax * f - x)));
+            const alle = v.hoehen.filter(f => innen(v.f(compare, pMax * f)) && innen(v.f(m, pMax * f)));
+            const frei = alle.filter(f => belegt.every(b => Math.abs(b - f) > 0.12));
+            const gueltig = frei.length ? frei : alle;
+            // Abstand von Pfeil und darüberliegender Beschriftung zu Gleichgewichten und Kurvennamen
+            const abstand = (f) => Math.min(...sperr.flatMap(x => [Math.abs(pMax * f - x), Math.abs(pMax * (f + 0.045) - x)]));
             const h = zeichnung ? gueltig.slice().sort((x, y) => abstand(y) - abstand(x))[0] : gueltig[0];
             if (h == null) return null;
+            belegt.push(h);
             const pRef = pMax * h, qAlt = v.f(compare, pRef), qNeu = v.f(m, pRef);
             if (Math.abs(qNeu - qAlt) < qMax * 0.02) return null;
             const rechts = qNeu > qAlt, y = Y(pRef);
@@ -1607,6 +1626,13 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
         {/* Angebot & Nachfrage */}
         <line x1={X(main.dStart.q)} y1={Y(main.dStart.p)} x2={X(main.dEnd.q)} y2={Y(main.dEnd.p)} stroke="#2563EB" strokeWidth="3.5" strokeLinecap="round" />
         {!nurNachfrage && <line x1={X(main.sStart.q)} y1={Y(main.sStart.p)} x2={X(main.sEnd.q)} y2={Y(main.sEnd.p)} stroke="#EF4444" strokeWidth="3.5" strokeLinecap="round" />}
+        {kapazitaet != null && !nurNachfrage && main.sEnd.q >= kapazitaet - 1e-9 && (
+          <g>
+            <line x1={X(kapazitaet)} y1={Y(main.sEnd.p)} x2={X(kapazitaet)} y2={pad.t} stroke="#EF4444" strokeWidth="3.5" strokeLinecap="round" />
+            <text x={X(kapazitaet) + 7} y={pad.t + 14} fontSize={FSL} fontWeight="800" fill="#B91C1C"
+                  paintOrder="stroke" stroke="#fff" strokeWidth="3">Kapazitätsgrenze {fmt(kapazitaet)}</text>
+          </g>
+        )}
         {!zeichnung && dotsOn(main.dStart, main.dEnd).map((p, i) => <circle key={'dd'+i} cx={p.x} cy={p.y} r="3.6" fill="#2563EB" />)}
         {!zeichnung && !nurNachfrage && dotsOn(main.sStart, main.sEnd).map((p, i) => <circle key={'sd'+i} cx={p.x} cy={p.y} r="3.6" fill="#EF4444" />)}
 
@@ -1713,7 +1739,7 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
 
           // Gleichgewicht(e) an den Achsen ablesen
           if (zeigeEq) {
-            const neu = marktKennzahlen(m), alt = compare ? marktKennzahlen(compare) : null;
+            const neu = eqVon(m), alt = compare ? eqVon(compare) : null;
             const lagen = alt
               ? [{ k: alt, i: '₀', farbe: '#64748B', alt: true }, { k: neu, i: '₁', farbe: '#0F172A' }]
               : [{ k: neu, i: '*', farbe: '#0F172A' }];
@@ -1726,7 +1752,8 @@ function MarktChart({ m, compare, priceLine, showSurplus, showEq = true, points,
                   <line x1={X(l.k.Q)} y1={Y(l.k.P)} x2={X(l.k.Q)} y2={Y(0)} stroke="#94A3B8" strokeWidth="1.4" strokeDasharray="5 4" />
                   <line x1={X(l.k.Q)} y1={Y(l.k.P)} x2={X(0)} y2={Y(l.k.P)} stroke="#94A3B8" strokeWidth="1.4" strokeDasharray="5 4" />
                 </g>);
-              const unten = engP && l.k.P === Math.min(alt.P, neu.P);
+              const anderer = l.alt ? neu : alt;
+              const unten = engP && (l.k.P < anderer.P - 1e-9 || (Math.abs(l.k.P - anderer.P) < 1e-9 && l.alt));
               teile.push(text('gp' + n, pad.l + 6, Y(l.k.P) + (unten ? 15 : -6),
                 ohneZahlen ? `P${l.i}` : `P${l.i} = ${zahl(l.k.P)}`, l.farbe, 'start', false));
               teile.push(text('gq' + n, X(l.k.Q) + 5, Y(0) - (engQ && !l.alt ? 22 : 6),
@@ -4343,14 +4370,14 @@ function App() {
                     ))}
                   </div>
                 </Block>
-                {task && (
+                {task && task.chart !== false && (
                   <Block titel={`Markt für ${task.sc.name}`} innen="p-2">
                     <MarktChart {...(() => {
                       const c = task.chart || {}, fertig = !!(res && res.fertig), neu = !!task.m2 && fertig;
                       return { m: neu ? task.m2 : task.m, compare: neu ? task.m : undefined, sc: task.sc,
                         showSurplus: !!c.showSurplus, showEq: c.showEq === false ? fertig : true,
                         points: fertig ? c.points : null, priceLine: c.priceLine, gapLabel: !!c.gapLabel && fertig,
-                        kompakt, verschiebung: true };
+                        kapazitaet: c.kapazitaet, kompakt, verschiebung: true };
                     })()} />
                   </Block>
                 )}
